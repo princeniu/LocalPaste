@@ -1,0 +1,26 @@
+name: LocalPaste
+options:
+  bundleIdPrefix: com.prince
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.0"
+targets:
+  LocalPaste:
+    type: application
+    platform: macOS
+    sources:
+      - path: LocalPaste
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prince.LocalPaste
+        INFOPLIST_FILE: LocalPaste/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+    scheme:
+      gatherCoverageData: false
+      testTargets: []
