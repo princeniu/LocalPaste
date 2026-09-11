@@ -6,7 +6,13 @@ struct LocalPasteApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(store: appDelegate.store, shortcutManager: appDelegate.shortcutManager)
+            if let store = appDelegate.store {
+                SettingsView(
+                    store: store,
+                    shortcutManager: appDelegate.shortcutManager,
+                    loginItemManager: appDelegate.loginItemManager
+                )
+            }
         }
     }
 }

@@ -128,9 +128,17 @@ final class ClipboardStore: ObservableObject {
 
     let modelContext: ModelContext
     private let defaults: UserDefaults
+    private let allowsSave: Bool
+    private struct ContentSummary {
+        let text: String
+        let plainText: String?
+        let searchText: String
+    }
+    private var summaries: [UUID: ContentSummary] = [:]
 
     @Published private(set) var entries: [ClipboardEntry] = []
     @Published private(set) var categories: [ClipCategory] = []
+    @Published private(set) var revision = 0
     @Published var lastErrorMessage: String?
     @Published var isPaused: Bool {
         didSet { defaults.set(isPaused, forKey: Self.pausedKey) }
@@ -152,6 +160,8 @@ final class ClipboardStore: ObservableObject {
 
     init(modelContainer: ModelContainer, defaults: UserDefaults = .standard) {
         self.modelContext = ModelContext(modelContainer)
+        self.modelContext.autosaveEnabled = false
+        self.allowsSave = modelContainer.configurations.allSatisfy(\.allowsSave)
         self.defaults = defaults
         self.isPaused = defaults.bool(forKey: Self.pausedKey)
         let configuredLimit = defaults.object(forKey: Self.historyLimitKey) as? Int ?? Self.defaultHistoryLimit
@@ -160,15 +170,29 @@ final class ClipboardStore: ObservableObject {
         refresh()
     }
 
-    func refresh() {
+    @discardableResult
+    func refresh() -> Bool {
         do {
             let entryDescriptor = FetchDescriptor<ClipboardEntry>(sortBy: [SortDescriptor(\ClipboardEntry.createdAt, order: .reverse)])
             let categoryDescriptor = FetchDescriptor<ClipCategory>(sortBy: [SortDescriptor(\ClipCategory.createdAt, order: .forward)])
-            entries = try modelContext.fetch(entryDescriptor)
-            categories = try modelContext.fetch(categoryDescriptor)
-            lastErrorMessage = nil
+            let fetchedEntries = try modelContext.fetch(entryDescriptor)
+            let fetchedCategories = try modelContext.fetch(categoryDescriptor)
+            let ids = Set(fetchedEntries.map(\.id))
+            summaries = summaries.filter { ids.contains($0.key) }
+            for entry in fetchedEntries where summaries[entry.id] == nil {
+                let payload = entry.payload
+                let plainText = payload.flatMap { PayloadText.plainText(from: $0) }
+                let text = plainText ?? payload?.displayText ?? "无法读取内容"
+                summaries[entry.id] = ContentSummary(text: text, plainText: plainText,
+                    searchText: [entry.title, entry.sourceName, text].joined(separator: " ").lowercased())
+            }
+            entries = fetchedEntries
+            categories = fetchedCategories
+            revision += 1
+            return true
         } catch {
             lastErrorMessage = "读取本地历史失败：\(error.localizedDescription)"
+            return false
         }
     }
 
@@ -190,11 +214,13 @@ final class ClipboardStore: ObservableObject {
             entry.sourceBundleIdentifier = sourceBundleIdentifier
             entry.sourceName = sourceName
             modelContext.insert(entry)
-            try modelContext.save()
+            try persistChanges()
             refresh()
             pruneHistory()
             return entry
         } catch {
+            modelContext.rollback()
+            refresh()
             lastErrorMessage = "保存剪贴板历史失败：\(error.localizedDescription)"
             return nil
         }
@@ -202,28 +228,36 @@ final class ClipboardStore: ObservableObject {
 
     func toggleFavorite(_ entry: ClipboardEntry) {
         entry.isFavorite.toggle()
-        saveAndRefresh()
+        if saveAndRefresh() { pruneHistory() }
     }
 
     @discardableResult
     func addCategory(named name: String) -> ClipCategory? {
+        guard let cleaned = validatedCategoryName(name) else { return nil }
+        let category = ClipCategory(name: cleaned)
+        modelContext.insert(category)
+        return saveAndRefresh() ? category : nil
+    }
+
+    @discardableResult
+    func renameCategory(_ category: ClipCategory, to name: String) -> Bool {
+        guard let cleaned = validatedCategoryName(name, excluding: category.id) else { return false }
+        category.name = cleaned
+        return saveAndRefresh()
+    }
+
+    private func validatedCategoryName(_ name: String, excluding id: UUID? = nil) -> String? {
         let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-        guard !categories.contains(where: { $0.name.caseInsensitiveCompare(cleaned) == .orderedSame }) else {
+        guard !cleaned.isEmpty else {
+            lastErrorMessage = "分类名称不能为空。"
+            return nil
+        }
+        guard !categories.contains(where: { $0.id != id && $0.name.caseInsensitiveCompare(cleaned) == .orderedSame }) else {
             lastErrorMessage = "已有同名分类。"
             return nil
         }
-        let category = ClipCategory(name: cleaned)
-        modelContext.insert(category)
-        saveAndRefresh()
-        return category
-    }
-
-    func renameCategory(_ category: ClipCategory, to name: String) {
-        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        category.name = cleaned
-        saveAndRefresh()
+        lastErrorMessage = nil
+        return cleaned
     }
 
     func deleteCategory(_ category: ClipCategory) {
@@ -280,11 +314,16 @@ final class ClipboardStore: ObservableObject {
         entry.payload
     }
 
-    func plainText(for entry: ClipboardEntry) -> String {
-        guard let payload = entry.payload else { return entry.title }
-        if !payload.plainText.isEmpty { return payload.plainText }
-        if !payload.filePaths.isEmpty { return payload.filePaths.joined(separator: "\n") }
-        return payload.displayText
+    func plainText(for entry: ClipboardEntry) -> String? {
+        summaries[entry.id]?.plainText
+    }
+
+    func displayText(for entry: ClipboardEntry) -> String {
+        summaries[entry.id]?.text ?? "无法读取内容"
+    }
+
+    func searchText(for entry: ClipboardEntry) -> String {
+        summaries[entry.id]?.searchText ?? ""
     }
 
     private func pruneHistory() {
@@ -299,12 +338,26 @@ final class ClipboardStore: ObservableObject {
         saveAndRefresh()
     }
 
-    private func saveAndRefresh() {
+    @discardableResult
+    private func saveAndRefresh() -> Bool {
         do {
-            try modelContext.save()
-            refresh()
+            try persistChanges()
+            return refresh()
         } catch {
+            modelContext.rollback()
+            refresh()
             lastErrorMessage = "保存本地设置失败：\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func persistChanges() throws {
+        // Some SwiftData runtimes log a read-only save failure without throwing it.
+        guard allowsSave else { throw CocoaError(.fileWriteNoPermission) }
+        try modelContext.save()
+        guard !modelContext.hasChanges else {
+            throw NSError(domain: "LocalPaste", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "更改尚未写入本地数据库。"])
         }
     }
 

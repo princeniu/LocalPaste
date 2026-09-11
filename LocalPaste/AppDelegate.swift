@@ -2,12 +2,14 @@ import Foundation
 import AppKit
 import SwiftData
 import SwiftUI
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let modelContainer: ModelContainer
-    let store: ClipboardStore
+    let modelContainer: ModelContainer?
+    let store: ClipboardStore?
     let shortcutManager: GlobalShortcutManager
+    let loginItemManager: LoginItemManager
 
     private var monitor: ClipboardMonitor!
     private var pasteCoordinator: PasteCoordinator!
@@ -15,21 +17,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var pauseMenuItem: NSMenuItem!
     private var settingsWindowController: NSWindowController?
+    private var pauseObservation: AnyCancellable?
+    private let startupError: String?
 
     override init() {
         do {
-            self.modelContainer = try ModelContainer(for: ClipboardEntry.self, ClipCategory.self)
+            let identifier = Bundle.main.bundleIdentifier ?? ClipboardPersistence.productionBundleID
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+                .contains(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) else {
+                throw NSError(domain: "LocalPaste", code: 1, userInfo: [NSLocalizedDescriptionKey: "另一个 LocalPaste 版本仍在运行。请先退出它，再打开此版本，以保留完整历史。"])
+            }
+            let container = try ClipboardPersistence.open()
+            self.modelContainer = container
+            self.store = ClipboardStore(modelContainer: container)
+            self.startupError = nil
         } catch {
-            fatalError("无法初始化 LocalPaste 本地数据库：\(error)")
+            self.modelContainer = nil
+            self.store = nil
+            self.startupError = error.localizedDescription
         }
-        self.store = ClipboardStore(modelContainer: modelContainer)
         self.shortcutManager = GlobalShortcutManager()
+        self.loginItemManager = LoginItemManager()
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        guard let store else {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "无法打开本地历史"
+            alert.informativeText = (startupError ?? "数据库不可用。") + "\n原历史没有被清空。"
+            alert.addButton(withTitle: "退出")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
+        }
+        loginItemManager.refreshStatus()
         setupStatusItem()
+        pauseObservation = store.$isPaused.removeDuplicates().sink { [weak self] paused in
+            self?.pauseMenuItem?.title = paused ? "恢复采集" : "暂停采集"
+        }
 
         monitor = ClipboardMonitor(store: store)
         pasteCoordinator = PasteCoordinator(store: store, monitor: monitor)
@@ -50,11 +79,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcutManager.unregisterHotKey()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        loginItemManager.refreshStatus()
+    }
+
     @objc private func togglePanelFromMenu() {
         panelController.toggle()
     }
 
     @objc private func togglePauseFromMenu() {
+        guard let store else { return }
         store.isPaused.toggle()
         updatePauseMenuItem()
     }
@@ -64,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openSettings() {
+        guard let store else { return }
         let controller: NSWindowController
         if let existing = settingsWindowController {
             controller = existing
@@ -77,7 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "LocalPaste 设置"
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(
-                rootView: SettingsView(store: store, shortcutManager: shortcutManager)
+                rootView: SettingsView(
+                    store: store,
+                    shortcutManager: shortcutManager,
+                    loginItemManager: loginItemManager
+                )
             )
             window.center()
             let created = NSWindowController(window: window)
@@ -121,6 +160,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updatePauseMenuItem() {
-        pauseMenuItem?.title = store.isPaused ? "恢复采集" : "暂停采集"
+        pauseMenuItem?.title = store?.isPaused == true ? "恢复采集" : "暂停采集"
     }
 }

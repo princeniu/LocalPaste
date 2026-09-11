@@ -11,6 +11,8 @@
 - 收藏、分类管理、本地 SwiftData 持久化、普通历史上限。
 - 暂停采集、排除应用、跳过 concealed/transient 剪贴板类型。
 - 菜单栏常驻；默认快捷键 `⌘⇧V`，设置中可调整。
+- 登录时启动及 macOS 批准状态提示。
+- 独立数据目录、保留旧库的迁移、离线 HTML 正文提取和缓存搜索。
 
 ## 隐私与限制
 
@@ -33,6 +35,8 @@ xcodebuild -project LocalPaste.xcodeproj -scheme LocalPaste \
 ```
 
 上述命令产出未签名的 Release `.app`，不代表已完成安装与授权。需要日用安装时，应使用本机有效且稳定的代码签名身份；不要给频繁变化的 ad-hoc 调试构建反复授权。详见 [首次运行](docs/runbooks/first-run.md)。
+
+必要回归可执行 `scripts/run-regressions.sh`。它使用人工旧库、临时数据库和独立命名剪贴板，覆盖迁移、暂停、粘贴竞争、分类和搜索；不读取日用历史、不发送系统粘贴按键。说明见 [回归验证](Tests/README.md)。HTML 提取使用 macOS SDK 自带的 libxml2，无新增第三方包。
 
 生成的 Xcode 工程、构建产物、证书、私人剪贴板数据、原始运行日志及截图均不进入仓库。`project.yml` 是工程配置来源。
 

@@ -1,9 +1,13 @@
 import Foundation
 import AppKit
+import Combine
 
 @MainActor
 final class ClipboardMonitor: ObservableObject {
     private let store: ClipboardStore
+    private let pasteboard: NSPasteboard
+    private let frontmostApplication: () -> NSRunningApplication?
+    private var pauseObservation: AnyCancellable?
     private var timer: Timer?
     private var lastChangeCount: Int?
     private var ignoredChangeCountUpperBound: Int?
@@ -25,20 +29,31 @@ final class ClipboardMonitor: ObservableObject {
         "public.url"
     ]
 
-    init(store: ClipboardStore) {
+    init(store: ClipboardStore, pasteboard: NSPasteboard = .general,
+         frontmostApplication: @escaping () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication }) {
         self.store = store
+        self.pasteboard = pasteboard
+        self.frontmostApplication = frontmostApplication
+        // This publisher delivers synchronously, before another poll can accept paused content.
+        pauseObservation = store.$isPaused.removeDuplicates().sink { [weak self] _ in
+            self?.resetBaseline()
+        }
+    }
+
+    private func resetBaseline() {
+        lastChangeCount = pasteboard.changeCount
+        sourcePID = frontmostApplication()?.processIdentifier
+        ignoredChangeCountUpperBound = nil
     }
 
     func start() {
         guard timer == nil else { return }
-        lastChangeCount = NSPasteboard.general.changeCount
-        sourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        resetBaseline()
         for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.didDeactivateApplicationNotification] {
             let observer = NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     // Changes spanning an app transition have ambiguous provenance: discard them.
-                    self?.lastChangeCount = NSPasteboard.general.changeCount
-                    self?.sourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+                    self?.resetBaseline()
                 }
             }
             workspaceObservers.append(observer)
@@ -65,8 +80,7 @@ final class ClipboardMonitor: ObservableObject {
         }
     }
 
-    private func poll() {
-        let pasteboard = NSPasteboard.general
+    func poll() {
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount
@@ -81,7 +95,7 @@ final class ClipboardMonitor: ObservableObject {
             self.ignoredChangeCountUpperBound = nil
         }
         guard !store.isPaused else { return }
-        let source = NSWorkspace.shared.frontmostApplication
+        let source = frontmostApplication()
         guard source?.processIdentifier == sourcePID else {
             sourcePID = source?.processIdentifier
             return
@@ -90,7 +104,7 @@ final class ClipboardMonitor: ObservableObject {
         guard !store.isExcluded(bundleIdentifier: source?.bundleIdentifier) else { return }
         guard let payload = makePayload(from: pasteboard) else { return }
         guard pasteboard.changeCount == changeCount,
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == source?.processIdentifier else { return }
+              frontmostApplication()?.processIdentifier == source?.processIdentifier else { return }
 
         let sourceName = source?.localizedName ?? "未知应用"
         let title = makeTitle(payload: payload)
@@ -102,7 +116,7 @@ final class ClipboardMonitor: ObservableObject {
         )
     }
 
-    private func makePayload(from pasteboard: NSPasteboard) -> StoredPasteboardPayload? {
+    func makePayload(from pasteboard: NSPasteboard) -> StoredPasteboardPayload? {
         let allTypes = Set(pasteboard.types ?? [])
         guard !allTypes.contains(Self.concealedType), !allTypes.contains(Self.transientType) else {
             return nil
@@ -149,6 +163,9 @@ final class ClipboardMonitor: ObservableObject {
             }
             if !representations.isEmpty {
                 storedItems.append(StoredPasteboardItem(representations: representations))
+                if itemPlainText == nil {
+                    itemPlainText = PayloadText.plainText(from: representations)
+                }
                 if let itemPlainText {
                     plainTextParts.append(itemPlainText)
                 }
