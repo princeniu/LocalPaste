@@ -155,7 +155,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     let precise = wheel(-24, units: .pixel)
     let cg = precise.cgEvent!
     cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.changed.rawValue))
-    cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(CGMomentumScrollPhase.continue.rawValue))
+    cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(CGMomentumScrollPhase.continuous.rawValue))
     let gesture = NSEvent(cgEvent: cg)!
     let mapped = HorizontalWheelEvent.redirect(gesture)!
     try check(!gesture.phase.isEmpty && !gesture.momentumPhase.isEmpty
