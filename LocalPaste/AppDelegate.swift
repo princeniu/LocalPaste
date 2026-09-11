@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItemManager.refreshStatus()
         setupStatusItem()
         pauseObservation = store.$isPaused.removeDuplicates().sink { [weak self] paused in
-            self?.pauseMenuItem?.title = paused ? "恢复采集" : "暂停采集"
+            self?.pauseMenuItem?.title = paused ? "继续记录" : "暂停记录"
         }
 
         monitor = ClipboardMonitor(store: store)
@@ -83,6 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItemManager.refreshStatus()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showHistory() }
+        return true
+    }
+
+    func showHistory() {
+        panelController?.show()
+    }
+
     @objc private func togglePanelFromMenu() {
         panelController.toggle()
     }
@@ -104,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller = existing
         } else {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
+                contentRect: NSRect(x: 0, y: 0, width: 540, height: 480),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -143,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openItem.target = self
         menu.addItem(openItem)
 
-        pauseMenuItem = NSMenuItem(title: "暂停采集", action: #selector(togglePauseFromMenu), keyEquivalent: "")
+        pauseMenuItem = NSMenuItem(title: "暂停记录", action: #selector(togglePauseFromMenu), keyEquivalent: "")
         pauseMenuItem.target = self
         menu.addItem(pauseMenuItem)
         menu.addItem(.separator())
@@ -160,6 +169,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updatePauseMenuItem() {
-        pauseMenuItem?.title = store?.isPaused == true ? "恢复采集" : "暂停采集"
+        pauseMenuItem?.title = store?.isPaused == true ? "继续记录" : "暂停记录"
     }
 }

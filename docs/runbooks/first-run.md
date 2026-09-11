@@ -16,22 +16,15 @@
 security find-identity -v -p codesigning
 ```
 
-在单独候选路径安装产物后，使用自己的有效身份签名；环境变量 `SIGNING_IDENTITY` 必须由开发者明确指定：
+选择本机稳定的签名身份，然后构建新的候选产物：
 
 ```sh
-CANDIDATE="$HOME/Applications/LocalPaste-Candidate.app"
-# 仅当候选路径不存在时复制，避免覆盖已确认版本。
-test ! -e "$CANDIDATE" || exit 1
-ditto --norsrc \
-  "$HOME/Library/Caches/LocalPasteBuildRelease/Build/Products/Release/LocalPaste.app" \
-  "$CANDIDATE"
-# 确認这是自己的新候选文件后再签名。
-codesign --force --options runtime --timestamp=none \
-  --identifier com.prince.LocalPaste --sign "${SIGNING_IDENTITY:?Specify a valid local signing identity}" \
-  "$CANDIDATE"
-codesign --verify --deep --strict "$CANDIDATE"
-codesign -d -r- "$CANDIDATE"
+LOCALPASTE_SIGNING_IDENTITY="你的有效签名身份" scripts/build-release.sh
 ```
+
+脚本打印 App 路径；同目录包含 ZIP、构建日志和 `build-info.json`。可用 `LOCALPASTE_BUILD_OUTPUT` 指定新的输出目录；已含 App 的目录不会被覆盖。`project.yml` 管理产品版本，构建号默认来自提交计数，也可通过 `LOCALPASTE_BUILD_NUMBER` 显式指定。设置中的“关于 → 版本详情”可查看构建与修订；`dirty` 表示构建时含未提交修改。
+
+仓库的 macOS CI 仅生成未签名检查产物。本机签名仍由本机密钥链完成，不上传证书或日用数据库。
 
 不要同时运行同 bundle ID 的多个构建。候选验收通过后再安排替换，替换前保留原安装版，不在该说明中自动覆盖。
 

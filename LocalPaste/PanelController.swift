@@ -78,16 +78,16 @@ final class HistoryViewModel: ObservableObject {
 
     var emptyTitle: String {
         if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "没有匹配条目" }
-        if selectedCategoryID == "favorites" { return "还没有收藏条目" }
-        if selectedCategoryID != nil { return "这个分类还没有条目" }
-        return store.isPaused ? "剪贴板采集已暂停" : "还没有新的剪贴板历史"
+        if selectedCategoryID == "favorites" { return "还没有收藏" }
+        if selectedCategoryID != nil { return "分类里还没有内容" }
+        return store.isPaused ? "已暂停记录" : "复制的内容，会留在这里"
     }
 
     var emptyHint: String {
-        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "尝试其他关键词，或清除搜索条件。" }
-        if selectedCategoryID == "favorites" { return "右键点击历史卡片，选择“收藏”。" }
-        if selectedCategoryID != nil { return "右键点击历史卡片，将条目加入此分类。" }
-        return store.isPaused ? "在设置或菜单中恢复采集后，新复制的内容才会记录。" : "复制文字、图片或 Finder 文件后，新内容会显示在这里。"
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "试试更短的关键词。" }
+        if selectedCategoryID == "favorites" { return "右键收藏，留住常用内容。" }
+        if selectedCategoryID != nil { return "右键点击历史卡片，加入这个分类。" }
+        return store.isPaused ? "继续记录后，新复制的内容才会保存。" : "文字、图片和文件，随时找回。"
     }
 }
 

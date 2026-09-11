@@ -13,6 +13,7 @@
 - 菜单栏常驻；默认快捷键 `⌘⇧V`，设置中可调整。
 - 登录时启动及 macOS 批准状态提示。
 - 独立数据目录、保留旧库的迁移、离线 HTML 正文提取和缓存搜索。
+- 通用、隐私、分类、关于四个设置页面；明确的记录状态、可点击修改的快捷键及按需展开的版本信息。
 
 ## 隐私与限制
 
@@ -27,18 +28,18 @@
 依赖：macOS 14+、支持相应 SDK 的 Xcode、XcodeGen。当前基线使用 Xcode 26 构建。
 
 ```sh
-xcodegen generate
-xcodebuild -project LocalPaste.xcodeproj -scheme LocalPaste \
-  -configuration Release \
-  -derivedDataPath "$HOME/Library/Caches/LocalPasteBuildRelease" \
-  CODE_SIGNING_ALLOWED=NO build
+scripts/build-release.sh
 ```
 
-上述命令产出未签名的 Release `.app`，不代表已完成安装与授权。需要日用安装时，应使用本机有效且稳定的代码签名身份；不要给频繁变化的 ad-hoc 调试构建反复授权。详见 [首次运行](docs/runbooks/first-run.md)。
+脚本在独立缓存目录产出 Release App、ZIP 和 `build-info.json`，记录版本、构建号、提交及源码摘要。构建号默认采用提交计数，可用 `LOCALPASTE_BUILD_NUMBER` 指定；未提交改动会在修订中标记 `dirty`。设置 `LOCALPASTE_BUILD_OUTPUT` 可选择新的输出目录。
+
+默认产物未签名。日用安装可通过 `LOCALPASTE_SIGNING_IDENTITY` 指定本机稳定身份完成签名，脚本不会自行替换已安装的 App。详见 [首次运行](docs/runbooks/first-run.md)。
 
 必要回归可执行 `scripts/run-regressions.sh`。它使用人工旧库、临时数据库和独立命名剪贴板，覆盖迁移、暂停、粘贴竞争、分类和搜索；不读取日用历史、不发送系统粘贴按键。说明见 [回归验证](Tests/README.md)。HTML 提取使用 macOS SDK 自带的 libxml2，无新增第三方包。
 
 生成的 Xcode 工程、构建产物、证书、私人剪贴板数据、原始运行日志及截图均不进入仓库。`project.yml` 是工程配置来源。
+
+PR 的 macOS 工作流运行同一套回归与构建脚本，保留未签名产物和构建摘要供检查。
 
 ## 下一阶段
 

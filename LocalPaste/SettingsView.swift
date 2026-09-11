@@ -1,277 +1,260 @@
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 struct SettingsView: View {
     @ObservedObject var store: ClipboardStore
     @ObservedObject var shortcutManager: GlobalShortcutManager
     @ObservedObject var loginItemManager: LoginItemManager
 
+    private enum Page: String, CaseIterable, Identifiable {
+        case general = "通用", privacy = "隐私", categories = "分类", about = "关于"
+        var id: Self { self }
+    }
+    @State private var page: Page = .general
     @State private var isRecordingShortcut = false
     @State private var showCreateCategory = false
-    @State private var showRenameCategory = false
-    @State private var newCategoryName = ""
     @State private var categoryToRename: ClipCategory?
-
-    private let surfaceColor = Color(nsColor: .windowBackgroundColor)
+    @State private var errorDetails: String?
+    @State private var pasteAuthorized = AXIsProcessTrusted()
 
     var body: some View {
-        Form {
-            if let error = store.lastErrorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                    Button("关闭错误提示") { store.lastErrorMessage = nil }
-                } header: {
-                    Text("操作失败")
+        VStack(spacing: 0) {
+            Picker("设置", selection: $page) {
+                ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
+
+            Form {
+                if let error = store.lastErrorMessage {
+                    issueRow("操作未完成", details: error)
+                }
+                switch page {
+                case .general: generalSettings
+                case .privacy: privacySettings
+                case .categories: categorySettings
+                case .about: aboutSettings
                 }
             }
-            Section {
-                Toggle(
-                    "开启剪贴板采集",
-                    isOn: Binding(
-                        get: { !store.isPaused },
-                        set: { store.isPaused = !$0 }
-                    )
-                )
-
-                Text(store.isPaused
-                     ? "已暂停采集。开启后仅记录新复制的内容。"
-                     : "正在采集新复制的内容，排除应用规则仍然生效。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Stepper(value: $store.historyLimit, in: 50...5_000, step: 50) {
-                    HStack(spacing: 12) {
-                        Text("普通历史上限")
-                        Spacer(minLength: 12)
-                        Text("\(store.historyLimit) 条")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
-                Text("收藏条目不参与淘汰。历史只存储在本机的 LocalPaste Application Support 数据库中。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: {
-                sectionHeader("历史", symbol: "clock.arrow.circlepath")
-            }
-
-            Section {
-                Toggle(
-                    "登录时启动",
-                    isOn: Binding(
-                        get: { loginItemManager.isEnabled },
-                        set: { loginItemManager.setEnabled($0) }
-                    )
-                )
-                .disabled(!loginItemManager.allowsChanges)
-
-                Text(loginItemManager.statusMessage)
-                    .font(.footnote)
-                    .foregroundStyle(loginItemManager.requiresApproval ? .orange : .secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if loginItemManager.requiresApproval && loginItemManager.allowsChanges {
-                    Button("打开登录项设置…") {
-                        loginItemManager.openSystemSettings()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
-                if !loginItemManager.allowsChanges {
-                    Text("此 UI 验证副本仅展示登录项状态，开关已禁用。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if let error = loginItemManager.lastErrorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } header: {
-                sectionHeader("系统", symbol: "power")
-            }
-
-            Section {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("当前快捷键")
-                            .font(.body.weight(.medium))
-                        Text("用于打开 LocalPaste 面板")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 12)
-                    Text(shortcutManager.shortcut.displayName)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.orange.opacity(0.12))
-                        .clipShape(.capsule)
-                        .overlay {
-                            Capsule()
-                                .stroke(Color.orange.opacity(0.32), lineWidth: 1)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("录制新的快捷键")
-                        .font(.subheadline.weight(.medium))
-                    HStack(spacing: 10) {
-                        ShortcutRecorderView(
-                            isRecording: isRecordingShortcut,
-                            displayName: isRecordingShortcut ? "按下快捷键…" : shortcutManager.shortcut.displayName
-                        ) { keyCode, modifiers in
-                            isRecordingShortcut = false
-                            let spec = ShortcutSpec(keyCode: UInt32(keyCode), modifiers: modifiers)
-                            _ = shortcutManager.apply(spec)
-                        }
-                        .frame(width: 184, height: 32)
-
-                        Button(isRecordingShortcut ? "取消" : "录制") {
-                            isRecordingShortcut.toggle()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-
-                if !shortcutManager.isRegistered {
-                    Label("快捷键当前未注册。", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                }
-                if let error = shortcutManager.lastErrorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text("注册失败会保留原快捷键，并显示系统返回的实际 OSStatus。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: {
-                sectionHeader("全局快捷键", symbol: "keyboard")
-            }
-
-            Section {
-                ForEach(store.excludedApplications) { app in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "app.dashed")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(app.name)
-                                .font(.body.weight(.medium))
-                            Text(app.bundleIdentifier)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Button("移除") {
-                            store.removeExcludedApplication(app)
-                        }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                    }
-                }
-
-                Button("添加应用…", systemImage: "plus") {
-                    chooseExcludedApplication()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Text("排除检查先于内容读取，应用切换期间的变化会保守丢弃。macOS 不提供可靠的写入来源，排除属于尽力保护；复制敏感内容前请暂停采集。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } header: {
-                sectionHeader("排除应用", symbol: "hand.raised")
-            }
-
-            Section {
-                ForEach(store.categories) { category in
-                    HStack(spacing: 10) {
-                        Image(systemName: "tag")
-                            .foregroundStyle(.secondary)
-                        Text(category.name)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("重命名") {
-                            categoryToRename = category
-                            newCategoryName = category.name
-                            showRenameCategory = true
-                        }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                        Button("删除", role: .destructive) {
-                            store.deleteCategory(category)
-                        }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                    }
-                }
-
-                Button("新建分类", systemImage: "plus") {
-                    newCategoryName = ""
-                    showCreateCategory = true
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Text("删除分类不会删除剪贴板条目。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } header: {
-                sectionHeader("分类", symbol: "square.grid.2x2")
-            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .background(surfaceColor)
+        .background(Color(nsColor: .windowBackgroundColor))
         .tint(.orange)
-        .padding(.top, 8)
-        .frame(width: 520, height: 620)
-        .onAppear {
-            loginItemManager.refreshStatus()
+        .frame(width: 540, height: 480)
+        .onAppear { refreshSystemStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshSystemStatus()
         }
+        .onChange(of: page) { _, _ in isRecordingShortcut = false }
+        .onDisappear { isRecordingShortcut = false }
+        .alert("详细信息", isPresented: Binding(
+            get: { errorDetails != nil },
+            set: { if !$0 { errorDetails = nil } }
+        )) {
+            Button("好", role: .cancel) { errorDetails = nil }
+        } message: { Text(errorDetails ?? "") }
         .sheet(isPresented: $showCreateCategory) {
-            CategoryEditor(title: "新建分类", store: store) { name in
-                store.addCategory(named: name) != nil
-            }
+            CategoryEditor(title: "新建分类", store: store) { store.addCategory(named: $0) != nil }
         }
-        .sheet(isPresented: $showRenameCategory) {
-            CategoryEditor(title: "重命名分类", name: newCategoryName, store: store) { name in
-                guard let categoryToRename else { return false }
-                return store.renameCategory(categoryToRename, to: name)
+        .sheet(item: $categoryToRename) { category in
+            CategoryEditor(title: "重命名分类", name: category.name, store: store) { name in
+                store.renameCategory(category, to: name)
             }
         }
     }
 
-    private func sectionHeader(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol)
-            .font(.headline)
-            .foregroundStyle(.orange)
-            .textCase(nil)
+    private var generalSettings: some View {
+        Group {
+            Section {
+                Toggle(isOn: Binding(get: { !store.isPaused }, set: { store.isPaused = !$0 })) {
+                    HStack(spacing: 8) {
+                        Text("记录剪贴板历史")
+                        Text(store.isPaused ? "已暂停" : "记录中")
+                            .font(.caption)
+                            .foregroundStyle(store.isPaused ? .orange : .secondary)
+                    }
+                }
+                .accessibilityLabel("记录剪贴板历史")
+                .accessibilityValue(store.isPaused ? "已暂停" : "记录中")
+                Stepper(value: $store.historyLimit, in: 50...5_000, step: 50) {
+                    HStack {
+                        Text("保留条数")
+                        Spacer()
+                        Text("\(store.historyLimit) 条").foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+            } header: { Text("历史") }
+              footer: { Text("收藏的内容会一直保留。") }
+
+            Section("启动与快捷键") {
+                Toggle("登录时启动", isOn: Binding(
+                    get: { loginItemManager.isEnabled },
+                    set: { loginItemManager.setEnabled($0) }
+                ))
+                .disabled(!loginItemManager.allowsChanges || !loginItemManager.isAvailable)
+                if loginItemManager.requiresApproval {
+                    HStack {
+                        Label("等待系统允许", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+                        Spacer()
+                        Button("前往设置") { loginItemManager.openSystemSettings() }
+                            .disabled(!loginItemManager.allowsChanges)
+                    }
+                } else if !loginItemManager.isAvailable {
+                    Text("请将 LocalPaste 放入“应用程序”后重试。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = loginItemManager.lastErrorMessage {
+                    issueRow("无法更改登录启动设置", details: error)
+                }
+
+                HStack {
+                    Text("打开历史")
+                    Spacer()
+                    ShortcutRecorderView(
+                        isRecording: isRecordingShortcut,
+                        displayName: shortcutManager.shortcut.displayName,
+                        onBeginRecording: { isRecordingShortcut = true },
+                        onCancel: { isRecordingShortcut = false }
+                    ) { code, modifiers in
+                        isRecordingShortcut = false
+                        _ = shortcutManager.apply(ShortcutSpec(keyCode: UInt32(code), modifiers: modifiers))
+                    }
+                    .frame(width: 156, height: 30)
+                    if isRecordingShortcut {
+                        Button("取消") { isRecordingShortcut = false }.controlSize(.small)
+                    }
+                }
+                if let error = shortcutManager.lastErrorMessage {
+                    issueRow("快捷键不可用，请换一个组合", details: error)
+                } else if !shortcutManager.isRegistered {
+                    Label("快捷键暂不可用", systemImage: "exclamationmark.circle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    private var privacySettings: some View {
+        Group {
+            Section("自动粘贴") {
+                HStack {
+                    Label(pasteAuthorized ? "已允许自动粘贴" : "需要辅助功能权限",
+                          systemImage: pasteAuthorized ? "checkmark.circle.fill" : "hand.raised")
+                        .foregroundStyle(pasteAuthorized ? Color.secondary : Color.primary)
+                    Spacer()
+                    if !pasteAuthorized {
+                        Button("前往授权") {
+                            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+                            _ = AXIsProcessTrustedWithOptions(options)
+                        }
+                        .disabled(!loginItemManager.allowsChanges)
+                    }
+                }
+            }
+            Section {
+                ForEach(store.excludedApplications) { app in
+                    HStack(spacing: 10) {
+                        Image(nsImage: appIcon(app.bundleIdentifier))
+                            .resizable().frame(width: 24, height: 24).accessibilityHidden(true)
+                        Text(app.name).lineLimit(1)
+                        Spacer()
+                        Button { store.removeExcludedApplication(app) } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("移除 \(app.name)")
+                        .accessibilityLabel("移除 \(app.name)")
+                    }
+                }
+                Button("添加应用…", systemImage: "plus") { chooseExcludedApplication() }
+            } header: { Text("忽略这些应用") }
+              footer: { Text("应用排除受 macOS 限制，复制敏感内容前请先暂停记录。") }
+            Section {
+                Label("历史仅保存在这台 Mac", systemImage: "internaldrive")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var categorySettings: some View {
+        Section {
+            if store.categories.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "tag").font(.system(size: 28)).foregroundStyle(.tertiary)
+                    Text("整理常用内容").font(.headline)
+                    Text("用分类收纳工作、链接和灵感。")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Button("新建分类", systemImage: "plus") { showCreateCategory = true }
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 28)
+            } else {
+                ForEach(store.categories) { category in
+                    HStack(spacing: 10) {
+                        Image(systemName: "tag").foregroundStyle(.secondary)
+                        Text(category.name).lineLimit(1)
+                        Spacer()
+                        Menu {
+                            Button("重命名") { categoryToRename = category }
+                            Button("删除分类", role: .destructive) { store.deleteCategory(category) }
+                        } label: { Image(systemName: "ellipsis") }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .accessibilityLabel("管理分类 \(category.name)")
+                    }
+                }
+                Button("新建分类", systemImage: "plus") { showCreateCategory = true }
+            }
+        } header: { Text("分类") }
+          footer: { if !store.categories.isEmpty { Text("删除分类不会删除其中的历史。") } }
+    }
+
+    private var aboutSettings: some View {
+        Section {
+            VStack(spacing: 12) {
+                Image(systemName: "doc.on.clipboard.fill")
+                    .font(.system(size: 36)).foregroundStyle(.orange)
+                    .frame(width: 76, height: 76)
+                    .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
+                Text("LocalPaste").font(.title2.weight(.semibold))
+                Text("随手复制，随时找回。")
+                    .foregroundStyle(.secondary)
+                Text("版本 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 24)
+            DisclosureGroup("版本详情") {
+                LabeledContent("构建", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")
+                if let revision = Bundle.main.infoDictionary?["LocalPasteRevision"] as? String, !revision.isEmpty {
+                    LabeledContent("修订", value: revision)
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func issueRow(_ title: String, details: String) -> some View {
+        HStack {
+            Label(title, systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+            Spacer()
+            Button("详情") { errorDetails = details }.controlSize(.small)
+        }
+    }
+
+    private func refreshSystemStatus() {
+        loginItemManager.refreshStatus()
+        pasteAuthorized = AXIsProcessTrusted()
+    }
+
+    private func appIcon(_ identifier: String) -> NSImage {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
     }
 
     private func chooseExcludedApplication() {
@@ -280,25 +263,28 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.prompt = "排除"
+        panel.prompt = "添加"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let bundle = Bundle(url: url)
-        let bundleIdentifier = bundle?.bundleIdentifier ?? url.path
         let name = bundle?.localizedInfoDictionary?["CFBundleDisplayName"] as? String
             ?? bundle?.localizedInfoDictionary?["CFBundleName"] as? String
             ?? url.deletingPathExtension().lastPathComponent
-        store.addExcludedApplication(bundleIdentifier: bundleIdentifier, name: name)
+        store.addExcludedApplication(bundleIdentifier: bundle?.bundleIdentifier ?? url.path, name: name)
     }
 }
 
 struct ShortcutRecorderView: NSViewRepresentable {
     let isRecording: Bool
     let displayName: String
+    var onBeginRecording: () -> Void = {}
+    var onCancel: () -> Void = {}
     let onRecord: (UInt16, UInt32) -> Void
 
     func makeNSView(context: Context) -> ShortcutCaptureView {
         let view = ShortcutCaptureView()
         view.onRecord = onRecord
+        view.onBeginRecording = onBeginRecording
+        view.onCancel = onCancel
         view.displayName = displayName
         view.isRecording = isRecording
         return view
@@ -306,6 +292,8 @@ struct ShortcutRecorderView: NSViewRepresentable {
 
     func updateNSView(_ nsView: ShortcutCaptureView, context: Context) {
         nsView.onRecord = onRecord
+        nsView.onBeginRecording = onBeginRecording
+        nsView.onCancel = onCancel
         nsView.displayName = displayName
         nsView.isRecording = isRecording
         if isRecording {
@@ -318,23 +306,43 @@ final class ShortcutCaptureView: NSView {
     var isRecording = false { didSet { updateAccessibility(); needsDisplay = true } }
     var displayName = "" { didSet { updateAccessibility(); needsDisplay = true } }
     var onRecord: ((UInt16, UInt32) -> Void)?
+    var onBeginRecording: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
     private func updateAccessibility() {
         setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
-        setAccessibilityLabel("快捷键录制")
-        setAccessibilityValue(isRecording ? "正在录制，请按下含修饰键的快捷键" : displayName)
-        setAccessibilityHelp("使用旁边的录制或取消按钮控制录制。")
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("打开历史快捷键")
+        setAccessibilityValue(isRecording ? "请按下新的快捷键" : displayName)
+        setAccessibilityHelp("点击修改，按 Esc 取消。")
     }
 
     override func mouseDown(with event: NSEvent) {
+        onBeginRecording?()
         window?.makeFirstResponder(self)
     }
 
+    override func accessibilityPerformPress() -> Bool {
+        onBeginRecording?()
+        window?.makeFirstResponder(self)
+        return true
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard isRecording else { return super.performKeyEquivalent(with: event) }
+        keyDown(with: event)
+        return true
+    }
+
     override func keyDown(with event: NSEvent) {
-        guard isRecording else { return }
+        guard isRecording else {
+            if event.keyCode == 36 || event.keyCode == 49 { onBeginRecording?() }
+            else { super.keyDown(with: event) }
+            return
+        }
+        if event.keyCode == 53 { onCancel?(); return }
         let modifiers = event.modifierFlags.carbonShortcutModifiers
         guard modifiers != 0 else {
             NSSound.beep()

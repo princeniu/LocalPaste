@@ -8,6 +8,9 @@ settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
+    LOCALPASTE_REVISION: "local"
     SYSTEM_HEADER_SEARCH_PATHS: "$(SDKROOT)/usr/include/libxml2"
 targets:
   LocalPaste:

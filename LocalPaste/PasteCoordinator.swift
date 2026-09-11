@@ -43,7 +43,7 @@ final class PasteCoordinator: ObservableObject {
         completion: @escaping (String) -> Void
     ) {
         guard !isPasting else {
-            completion("正在完成上一次粘贴，请稍候。")
+            completion("正在粘贴，请稍候。")
             return
         }
         isPasting = true
@@ -94,12 +94,12 @@ final class PasteCoordinator: ObservableObject {
         guard environment.isTrusted() else {
             // Only reached after the user explicitly chooses a clip to paste.
             environment.requestPermission()
-            let message = "已复制，按 Command-V 粘贴（需要辅助功能权限才能自动粘贴）。"
+            let message = "已复制，按 ⌘V 粘贴。自动粘贴需要辅助功能权限。"
             finish(message)
             return
         }
         guard let targetApplication, !targetApplication.isTerminated else {
-            let message = "已复制，按 Command-V 粘贴（没有可确认的原目标应用）。"
+            let message = "已复制，切换到目标应用后按 ⌘V 粘贴。"
             finish(message)
             return
         }
@@ -109,16 +109,16 @@ final class PasteCoordinator: ObservableObject {
         environment.schedule { [weak self] in
             guard let self else { return }
             guard pasteboard.changeCount == writtenChangeCount else {
-                finish("剪贴板已被其他复制操作更改，已取消自动粘贴。")
+                finish("你复制了新内容，本次粘贴已取消。")
                 return
             }
             guard self.environment.frontmostPID() == processIdentifier else {
-                let message = "已复制，按 Command-V 粘贴（原目标应用未回到前台）。"
+                let message = "已复制，切换到目标应用后按 ⌘V 粘贴。"
                 finish(message)
                 return
             }
             guard self.environment.sendCommandV() else {
-                let message = "已复制，按 Command-V 粘贴（系统未允许发送按键）。"
+                let message = "无法自动粘贴，请按 ⌘V 完成。"
                 finish(message)
                 return
             }
