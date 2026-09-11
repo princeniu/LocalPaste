@@ -139,6 +139,35 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     vm.query = "Synthetic"; try check(vm.visibleEntries.count == 50, "search does not consult payload bytes after indexing")
 }
 
+@MainActor func testHorizontalWheel() throws {
+    // In-memory events only: these are never posted to the system event queue.
+    func wheel(_ y: Int32, _ x: Int32 = 0, units: CGScrollEventUnit = .line) -> NSEvent {
+        NSEvent(cgEvent: CGEvent(scrollWheelEvent2Source: nil, units: units,
+                               wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0)!)!
+    }
+    for delta: Int32 in [-3, 3] {
+        let original = wheel(delta)
+        let mapped = HorizontalWheelEvent.redirect(original)!
+        try check(mapped.scrollingDeltaX == original.scrollingDeltaY && mapped.scrollingDeltaY == 0
+                  && !mapped.hasPreciseScrollingDeltas && original.scrollingDeltaX == 0,
+                  "vertical mouse wheel maps to horizontal with original direction (\(delta))")
+    }
+    let precise = wheel(-24, units: .pixel)
+    let cg = precise.cgEvent!
+    cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.changed.rawValue))
+    cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(CGMomentumScrollPhase.continue.rawValue))
+    let gesture = NSEvent(cgEvent: cg)!
+    let mapped = HorizontalWheelEvent.redirect(gesture)!
+    try check(!gesture.phase.isEmpty && !gesture.momentumPhase.isEmpty
+              && mapped.hasPreciseScrollingDeltas && mapped.scrollingDeltaX == gesture.scrollingDeltaY
+              && mapped.phase == gesture.phase && mapped.momentumPhase == gesture.momentumPhase,
+              "precise wheel retains pixel distance and gesture phases")
+    try check(HorizontalWheelEvent.redirect(wheel(0, -3)) == nil
+              && HorizontalWheelEvent.redirect(wheel(-3, -1, units: .pixel)) == nil
+              && HorizontalWheelEvent.redirect(wheel(0)) == nil,
+              "horizontal and diagonal trackpad gestures and zero deltas stay native")
+}
+
 @MainActor func testMigration(_ fixture: URL) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("LocalPasteMigration-\(UUID())", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -250,7 +279,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             return
         }
         do {
-            try testStore(); try testCaptureAndPaste(); try testSearch()
+            try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }
             else { throw RegressionFailure(message: "Legacy fixture path required") }
             log("ALL_REGRESSIONS_PASSED")

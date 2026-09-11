@@ -247,6 +247,7 @@ struct HistoryView: View {
                         }
                     }
                     .padding(.vertical, 5)
+                    .background(HorizontalWheelSupport())
                 }
                 .onChange(of: viewModel.selectedID) { _, id in
                     if let id { proxy.scrollTo(id, anchor: .center) }
