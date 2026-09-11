@@ -1,24 +1,33 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 
 @MainActor
 final class HistoryViewModel: ObservableObject {
-    @Published var query = ""
-    @Published var selectedCategoryID: String?
+    @Published var query = "" { didSet { refreshEntries() } }
+    @Published var selectedCategoryID: String? { didSet { refreshEntries() } }
     @Published var selectedID: UUID?
+    @Published var focusedCardID: UUID?
     @Published var previewEntryID: UUID?
     @Published var statusMessage: String?
+    @Published private(set) var visibleEntries: [ClipboardEntry] = []
+    private var storeObservation: AnyCancellable?
 
     let store: ClipboardStore
 
     init(store: ClipboardStore) {
         self.store = store
+        storeObservation = store.$revision.sink { [weak self] _ in self?.refreshEntries() }
     }
 
-    var visibleEntries: [ClipboardEntry] {
+    private func refreshEntries() {
+        if let id = selectedCategoryID, id != "favorites", !store.categories.contains(where: { $0.id.uuidString == id }) {
+            selectedCategoryID = nil
+            return
+        }
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return store.entries.filter { entry in
+        visibleEntries = store.entries.filter { entry in
             let matchesCategory: Bool
             if let selectedCategoryID {
                 if selectedCategoryID == "favorites" {
@@ -31,11 +40,9 @@ final class HistoryViewModel: ObservableObject {
             }
             guard matchesCategory else { return false }
             guard !normalizedQuery.isEmpty else { return true }
-            let haystack = [entry.title, entry.sourceName, entry.payload?.displayText ?? ""]
-                .joined(separator: " ")
-                .lowercased()
-            return haystack.contains(normalizedQuery)
+            return store.searchText(for: entry).contains(normalizedQuery)
         }
+        ensureSelection()
     }
 
     var selectedEntry: ClipboardEntry? {
@@ -44,6 +51,7 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func ensureSelection() {
+        if let id = previewEntryID, !store.entries.contains(where: { $0.id == id }) { previewEntryID = nil }
         if let selectedID, visibleEntries.contains(where: { $0.id == selectedID }) { return }
         selectedID = visibleEntries.first?.id
     }
@@ -66,6 +74,20 @@ final class HistoryViewModel: ObservableObject {
 
     func showPreviewForSelection() {
         previewEntryID = selectedEntry?.id
+    }
+
+    var emptyTitle: String {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "没有匹配条目" }
+        if selectedCategoryID == "favorites" { return "还没有收藏条目" }
+        if selectedCategoryID != nil { return "这个分类还没有条目" }
+        return store.isPaused ? "剪贴板采集已暂停" : "还没有新的剪贴板历史"
+    }
+
+    var emptyHint: String {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "尝试其他关键词，或清除搜索条件。" }
+        if selectedCategoryID == "favorites" { return "右键点击历史卡片，选择“收藏”。" }
+        if selectedCategoryID != nil { return "右键点击历史卡片，将条目加入此分类。" }
+        return store.isPaused ? "在设置或菜单中恢复采集后，新复制的内容才会记录。" : "复制文字、图片或 Finder 文件后，新内容会显示在这里。"
     }
 }
 
@@ -135,7 +157,7 @@ final class PanelController: NSObject {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
         let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let panelSize = NSSize(width: min(920, max(720, visibleFrame.width - 48)), height: 318)
+        let panelSize = NSSize(width: min(920, max(720, visibleFrame.width - 48)), height: 344)
         let origin = NSPoint(
             x: visibleFrame.midX - panelSize.width / 2,
             y: visibleFrame.minY + 24
@@ -212,19 +234,26 @@ final class PanelController: NSObject {
                 }
                 return event
             }
+            // Controls retain their native Enter/Space behavior. Only the navigation
+            // container and explicitly focused cards participate in history navigation.
+            let navigationFocused = panel.firstResponder === panel.contentView
             switch event.keyCode {
             case 123:
+                guard navigationFocused || self.viewModel.focusedCardID != nil else { return event }
                 self.viewModel.moveSelection(by: -1)
                 return nil
             case 124:
+                guard navigationFocused || self.viewModel.focusedCardID != nil else { return event }
                 self.viewModel.moveSelection(by: 1)
                 return nil
             case 36, 76:
+                guard navigationFocused else { return event }
                 if let entry = self.viewModel.selectedEntry {
                     self.paste(entry: entry, plainTextOnly: false)
                 }
                 return nil
             case 49:
+                guard navigationFocused else { return event }
                 self.viewModel.showPreviewForSelection()
                 return nil
             case 53:
