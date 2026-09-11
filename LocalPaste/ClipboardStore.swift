@@ -32,18 +32,18 @@ enum ClipboardContentType: String {
     var label: String {
         switch self {
         case .text: return "文本"
-        case .html: return "HTML"
+        case .html: return "网页"
         case .richText: return "富文本"
         case .image: return "图片"
-        case .fileReference: return "文件引用"
-        case .mixed: return "多格式"
+        case .fileReference: return "文件"
+        case .mixed: return "混合内容"
         }
     }
 
     var symbolName: String {
         switch self {
         case .text: return "doc.plaintext"
-        case .html: return "chevron.left.forwardslash.chevron.right"
+        case .html: return "doc.richtext"
         case .richText: return "textformat"
         case .image: return "photo"
         case .fileReference: return "doc"

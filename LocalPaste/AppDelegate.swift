@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let identifier = Bundle.main.bundleIdentifier ?? ClipboardPersistence.productionBundleID
             guard !NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
                 .contains(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) else {
-                throw NSError(domain: "LocalPaste", code: 1, userInfo: [NSLocalizedDescriptionKey: "另一个 LocalPaste 版本仍在运行。请先退出它，再打开此版本，以保留完整历史。"])
+                throw NSError(domain: "LocalPaste", code: 1, userInfo: [NSLocalizedDescriptionKey: "另一个版本仍在运行。请先退出它，再打开\(AppBrand.name)，以保留完整历史。"])
             }
             let container = try ClipboardPersistence.open()
             self.modelContainer = container
@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItemManager.refreshStatus()
         setupStatusItem()
         pauseObservation = store.$isPaused.removeDuplicates().sink { [weak self] paused in
-            self?.pauseMenuItem?.title = paused ? "恢复采集" : "暂停采集"
+            self?.pauseMenuItem?.title = paused ? "继续记录" : "暂停记录"
         }
 
         monitor = ClipboardMonitor(store: store)
@@ -83,6 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItemManager.refreshStatus()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showHistory() }
+        return true
+    }
+
+    func showHistory() {
+        panelController?.show()
+    }
+
     @objc private func togglePanelFromMenu() {
         panelController.toggle()
     }
@@ -104,12 +113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller = existing
         } else {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
+                contentRect: NSRect(x: 0, y: 0, width: 540, height: 480),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "LocalPaste 设置"
+            window.title = "\(AppBrand.name)设置"
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(
                 rootView: SettingsView(
@@ -135,15 +144,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "LocalPaste")
-        statusItem.button?.toolTip = "LocalPaste"
+        statusItem.button?.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: AppBrand.displayName)
+        statusItem.button?.toolTip = AppBrand.displayName
 
         let menu = NSMenu()
         let openItem = NSMenuItem(title: "打开历史", action: #selector(togglePanelFromMenu), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
 
-        pauseMenuItem = NSMenuItem(title: "暂停采集", action: #selector(togglePauseFromMenu), keyEquivalent: "")
+        pauseMenuItem = NSMenuItem(title: "暂停记录", action: #selector(togglePauseFromMenu), keyEquivalent: "")
         pauseMenuItem.target = self
         menu.addItem(pauseMenuItem)
         menu.addItem(.separator())
@@ -152,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let quitItem = NSMenuItem(title: "退出 LocalPaste", action: #selector(quitFromMenu), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "退出\(AppBrand.name)", action: #selector(quitFromMenu), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
@@ -160,6 +169,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updatePauseMenuItem() {
-        pauseMenuItem?.title = store?.isPaused == true ? "恢复采集" : "暂停采集"
+        pauseMenuItem?.title = store?.isPaused == true ? "继续记录" : "暂停记录"
     }
 }

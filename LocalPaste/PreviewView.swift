@@ -130,8 +130,6 @@ struct PreviewView: View {
 
     private func imagePreview(image: NSImage, payload: StoredPasteboardPayload) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            previewSectionTitle("图片预览", symbol: "photo")
-
             ZStack {
                 Color.black.opacity(0.24)
                 Image(nsImage: image)
@@ -154,12 +152,6 @@ struct PreviewView: View {
 
     private func filePreview(_ payload: StoredPasteboardPayload) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            previewSectionTitle("文件引用", symbol: "doc.on.doc")
-            Text("文件引用不会复制文件本体；原文件移动或删除后引用可能失效。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(payload.filePaths, id: \.self) { path in
                     HStack(alignment: .top, spacing: 10) {
@@ -168,12 +160,24 @@ struct PreviewView: View {
                             .frame(width: 28, height: 28)
                             .accessibilityHidden(true)
 
-                        Text(path)
-                            .font(.system(.callout, design: .monospaced))
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .layoutPriority(1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(URL(fileURLWithPath: path).lastPathComponent)
+                                .font(.body.weight(.medium))
+                            Text(FileManager.default.fileExists(atPath: path)
+                                 ? (URL(fileURLWithPath: path).deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+                                 : "原文件已移动或删除")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                        } label: { Image(systemName: "magnifyingglass") }
+                        .buttonStyle(.borderless)
+                        .disabled(!FileManager.default.fileExists(atPath: path))
+                        .help("在访达中显示")
+                        .accessibilityLabel("在访达中显示 \(URL(fileURLWithPath: path).lastPathComponent)")
                     }
                     .padding(.vertical, 10)
 
@@ -186,12 +190,13 @@ struct PreviewView: View {
             .padding(.horizontal, 14)
             .background(Color.white.opacity(0.06))
             .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            Text("保留原文件，之后才能再次粘贴。")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private func richTextPreview(_ attributed: NSAttributedString) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            previewSectionTitle("富文本预览", symbol: "textformat")
             RichTextContent(attributed: attributed)
             .frame(maxWidth: .infinity, minHeight: 190, idealHeight: 220, maxHeight: 360, alignment: .topLeading)
             .background(Color(nsColor: .textBackgroundColor).opacity(0.58))
@@ -205,7 +210,6 @@ struct PreviewView: View {
 
     private func plainTextPreview(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            previewSectionTitle("文本预览", symbol: "doc.plaintext")
             ScrollView {
                 Text(text.isEmpty ? "无内容" : text)
                     .font(.body)
@@ -221,12 +225,6 @@ struct PreviewView: View {
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             }
         }
-    }
-
-    private func previewSectionTitle(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.orange)
     }
 
     private func payloadNote(_ text: String) -> some View {

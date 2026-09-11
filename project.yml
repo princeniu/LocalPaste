@@ -8,6 +8,9 @@ settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
+    LOCALPASTE_REVISION: "local"
     SYSTEM_HEADER_SEARCH_PATHS: "$(SDKROOT)/usr/include/libxml2"
 targets:
   LocalPaste:
@@ -18,6 +21,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.prince.LocalPaste
+        PRODUCT_NAME: Clipmori
+        EXECUTABLE_NAME: LocalPaste
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: LocalPaste/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_IDENTITY: "-"

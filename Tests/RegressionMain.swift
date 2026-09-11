@@ -42,7 +42,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     try check(store.addCategory(named: "  ") == nil, "empty category rejected")
     store.toggleFavorite(entry); vm.selectedCategoryID = "favorites"
     store.toggleFavorite(entry)
-    try check(vm.visibleEntries.isEmpty && vm.selectedID == nil && vm.emptyTitle == "还没有收藏条目", "removing favorite repairs selection and empty state")
+    try check(vm.visibleEntries.isEmpty && vm.selectedID == nil && vm.emptyTitle == "还没有收藏", "removing favorite repairs selection and empty state")
     vm.selectedCategoryID = nil; store.toggleFavorite(entry)
     for i in 0..<55 { add(store, "normal \(i)") }
     try check(store.entries.count == 51 && store.entries.filter{ !$0.isFavorite }.count == 50, "history limit preserves favorite")
@@ -139,6 +139,35 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     vm.query = "Synthetic"; try check(vm.visibleEntries.count == 50, "search does not consult payload bytes after indexing")
 }
 
+@MainActor func testHorizontalWheel() throws {
+    // In-memory events only: these are never posted to the system event queue.
+    func wheel(_ y: Int32, _ x: Int32 = 0, units: CGScrollEventUnit = .line) -> NSEvent {
+        NSEvent(cgEvent: CGEvent(scrollWheelEvent2Source: nil, units: units,
+                               wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0)!)!
+    }
+    for delta: Int32 in [-3, 3] {
+        let original = wheel(delta)
+        let mapped = HorizontalWheelEvent.redirect(original)!
+        try check(mapped.scrollingDeltaX == original.scrollingDeltaY && mapped.scrollingDeltaY == 0
+                  && !mapped.hasPreciseScrollingDeltas && original.scrollingDeltaX == 0,
+                  "vertical mouse wheel maps to horizontal with original direction (\(delta))")
+    }
+    let precise = wheel(-24, units: .pixel)
+    let cg = precise.cgEvent!
+    cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.changed.rawValue))
+    cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(CGMomentumScrollPhase.continuous.rawValue))
+    let gesture = NSEvent(cgEvent: cg)!
+    let mapped = HorizontalWheelEvent.redirect(gesture)!
+    try check(!gesture.phase.isEmpty && !gesture.momentumPhase.isEmpty
+              && mapped.hasPreciseScrollingDeltas && mapped.scrollingDeltaX == gesture.scrollingDeltaY
+              && mapped.phase == gesture.phase && mapped.momentumPhase == gesture.momentumPhase,
+              "precise wheel retains pixel distance and gesture phases")
+    try check(HorizontalWheelEvent.redirect(wheel(0, -3)) == nil
+              && HorizontalWheelEvent.redirect(wheel(-3, -1, units: .pixel)) == nil
+              && HorizontalWheelEvent.redirect(wheel(0)) == nil,
+              "horizontal and diagonal trackpad gestures and zero deltas stay native")
+}
+
 @MainActor func testMigration(_ fixture: URL) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("LocalPasteMigration-\(UUID())", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -178,6 +207,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     let board = namedBoard()
     var observation: Timer?
     var lastCount = 0
+    var fixtureDirectory: URL?
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             store = try makeStore(); shortcuts = GlobalShortcutManager(); login = LoginItemManager(allowsChanges: false)
@@ -196,6 +226,14 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             let rtfd = try richText.data(from: NSRange(location: 0, length: richText.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd])
             let richPayload = StoredPasteboardPayload(items: [.init(representations: [.init(uti: "com.apple.flat-rtfd", data: rtfd, stringValue: nil, filePath: nil)])], plainText: "FIX rich preview", displayText: "FIX rich preview", contentType: "richText", filePaths: [])
             _ = store.addEntry(payload: richPayload, sourceBundleIdentifier: "synthetic.test", sourceName: "人工样例", title: "FIX rich preview")
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LocalPasteUI-\(UUID())")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+            fixtureDirectory = directory
+            let file = directory.appendingPathComponent("设计笔记.txt")
+            try "LocalPaste product preview fixture".write(to: file, atomically: true, encoding: .utf8)
+            let paths = [file.path, directory.appendingPathComponent("已移走的文件.txt").path]
+            let filePayload = StoredPasteboardPayload(items: paths.map { .init(representations: [.init(uti: "public.file-url", data: nil, stringValue: URL(fileURLWithPath: $0).absoluteString, filePath: $0)]) }, plainText: "", displayText: "设计笔记", contentType: "fileReference", filePaths: paths)
+            _ = store.addEntry(payload: filePayload, sourceBundleIdentifier: "synthetic.test", sourceName: "人工样例", title: "FIX file preview")
             for i in (1...12).reversed() { add(store, String(format: "FIX card %02d", i) + " — 人工键盘样例") }
             _ = store.addCategory(named: "已有分类")
             var environment = PasteCoordinator.Environment()
@@ -220,13 +258,17 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
     @objc func showHistory() { panel.show() }
     @objc func showSettings() {
         if settings == nil {
-            settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 620), styleMask: [.titled,.closable], backing: .buffered, defer: false)
+            settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 480), styleMask: [.titled,.closable], backing: .buffered, defer: false)
             settings.title = "LocalPaste 修复验证设置"; settings.isReleasedWhenClosed = false
             settings.contentViewController = NSHostingController(rootView: SettingsView(store: store, shortcutManager: shortcuts, loginItemManager: login)); settings.center()
         }
         NSApp.activate(ignoringOtherApps: true); settings.makeKeyAndOrderFront(nil)
     }
-    @objc func quit() { observation?.invalidate(); board.releaseGlobally(); NSApp.terminate(nil) }
+    @objc func quit() {
+        observation?.invalidate(); board.releaseGlobally()
+        if let fixtureDirectory { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        NSApp.terminate(nil)
+    }
 }
 @main struct RegressionMain {
     @MainActor static func main() {
@@ -237,7 +279,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             return
         }
         do {
-            try testStore(); try testCaptureAndPaste(); try testSearch()
+            try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }
             else { throw RegressionFailure(message: "Legacy fixture path required") }
             log("ALL_REGRESSIONS_PASSED")

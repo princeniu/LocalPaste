@@ -14,5 +14,10 @@ struct LocalPasteApp: App {
                 )
             }
         }
+        .commands {
+            CommandGroup(after: .appSettings) {
+                Button("打开历史") { appDelegate.showHistory() }
+            }
+        }
     }
 }

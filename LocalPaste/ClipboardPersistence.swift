@@ -10,7 +10,7 @@ enum ClipboardPersistenceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .incompatibleLegacyStore:
-            return "旧数据库不匹配 LocalPaste，已保留原文件并停止迁移。请先检查旧数据来源。"
+            return "旧历史的格式无法识别，已保留原文件。请检查数据来源。"
         case .incompleteStore:
             return "历史目录已存在，但数据库不完整。已保留目录，请检查后重新打开。"
         case .unreadablePayload:

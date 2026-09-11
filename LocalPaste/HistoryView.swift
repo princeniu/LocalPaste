@@ -10,10 +10,8 @@ struct HistoryView: View {
     let onSettings: () -> Void
 
     @State private var showCreateCategory = false
-    @State private var showRenameCategory = false
     @State private var showClearConfirmation = false
     @State private var showStoreError = false
-    @State private var categoryName = ""
     @State private var categoryToRename: ClipCategory?
     @State private var hoveredEntryID: UUID?
     @FocusState private var searchFocused: Bool
@@ -57,10 +55,9 @@ struct HistoryView: View {
                 store.addCategory(named: name) != nil
             }
         }
-        .sheet(isPresented: $showRenameCategory) {
-            CategoryEditor(title: "重命名分类", name: categoryName, store: store) { name in
-                guard let categoryToRename else { return false }
-                return store.renameCategory(categoryToRename, to: name)
+        .sheet(item: $categoryToRename) { category in
+            CategoryEditor(title: "重命名分类", name: category.name, store: store) { name in
+                store.renameCategory(category, to: name)
             }
         }
         .alert("操作失败", isPresented: $showStoreError) {
@@ -75,27 +72,28 @@ struct HistoryView: View {
             }
             Button("取消", role: .cancel) { }
         } message: {
-            Text("默认保留收藏条目。此操作只删除 LocalPaste 的本地历史，不会删除原文件。")
+            Text("收藏会保留，原文件不会被删除。")
         }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
             HStack(spacing: 9) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("LocalPaste")
-                        .font(.headline)
-                    Text("\(viewModel.visibleEntries.count) 条历史")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Image(nsImage: AppBrand.icon)
+                    .resizable().interpolation(.high)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
+                Text(AppBrand.name).font(.headline)
             }
 
             Spacer(minLength: 12)
             searchField
+            Menu {
+                Button("清空历史…", role: .destructive) { showClearConfirmation = true }
+            } label: { Image(systemName: "ellipsis.circle") }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("更多操作")
             Button {
                 onSettings()
             } label: {
@@ -125,10 +123,11 @@ struct HistoryView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
-            TextField("搜索内容、标题或来源", text: $viewModel.query)
+            TextField("搜索历史", text: $viewModel.query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onSubmit { viewModel.ensureSelection() }
+                .help("搜索内容或来源应用")
             if !viewModel.query.isEmpty {
                 Button("清除", systemImage: "xmark.circle.fill") {
                     viewModel.query = ""
@@ -159,8 +158,6 @@ struct HistoryView: View {
                             .contextMenu {
                                 Button("重命名") {
                                     categoryToRename = category
-                                    categoryName = category.name
-                                    showRenameCategory = true
                                 }
                                 Button("删除分类", role: .destructive) {
                                     if viewModel.selectedCategoryID == category.id.uuidString {
@@ -171,19 +168,23 @@ struct HistoryView: View {
                             }
                     }
                     Button("新建分类", systemImage: "plus") {
-                        categoryName = ""
                         showCreateCategory = true
                     }
                     .buttonStyle(.borderless)
+                    .labelStyle(.iconOnly)
                     .foregroundStyle(.orange)
                     .help("新建分类")
                 }
             }
             if store.isPaused {
-                Label("已暂停", systemImage: "pause.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .fixedSize()
+                Button { store.isPaused = false } label: {
+                    Label("继续记录", systemImage: "play.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .help("已暂停，点击继续记录")
+                .fixedSize()
             }
         }
         .font(.caption)
@@ -228,6 +229,13 @@ struct HistoryView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if !viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("清除搜索") { viewModel.query = "" }
+                        .buttonStyle(.bordered)
+                } else if store.isPaused && viewModel.selectedCategoryID == nil {
+                    Button("继续记录") { store.isPaused = false }
+                        .buttonStyle(.borderedProminent)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -239,6 +247,7 @@ struct HistoryView: View {
                         }
                     }
                     .padding(.vertical, 5)
+                    .background(HorizontalWheelSupport())
                 }
                 .onChange(of: viewModel.selectedID) { _, id in
                     if let id { proxy.scrollTo(id, anchor: .center) }
@@ -428,7 +437,7 @@ struct HistoryView: View {
         HStack(spacing: 12) {
             if let error = store.lastErrorMessage {
                 Button { showStoreError = true } label: {
-                    Label(error, systemImage: "exclamationmark.triangle")
+                    Label("操作未完成 · 查看详情", systemImage: "exclamationmark.triangle")
                         .lineLimit(1)
                 }
                 .buttonStyle(.plain)
@@ -441,17 +450,26 @@ struct HistoryView: View {
                     .foregroundStyle(statusMessage == "已粘贴" ? .green : .orange)
                     .lineLimit(1)
             } else {
-                Text("← → 选择 · Enter 粘贴 · Space 预览 · Esc 关闭")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    keyboardHint("↵", action: "粘贴")
+                    keyboardHint("空格", action: "预览")
+                }
+                .help("← → 选择 · Return 粘贴 · 空格预览 · Esc 关闭")
             }
             Spacer()
-            Button("清空历史", systemImage: "trash") {
-                showClearConfirmation = true
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            Text("\(viewModel.visibleEntries.count) 条")
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
         .frame(height: 18)
+    }
+
+    private func keyboardHint(_ key: String, action: String) -> some View {
+        HStack(spacing: 5) {
+            Text(key).font(.system(size: 10, weight: .medium))
+                .padding(.horizontal, 4).padding(.vertical, 1)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
+            Text(action).font(.caption)
+        }
+        .foregroundStyle(.secondary)
     }
 }

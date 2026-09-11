@@ -43,7 +43,7 @@ final class LoginItemManager: ObservableObject {
         case .notRegistered:
             return "未启用。"
         case .enabled:
-            return "已启用，macOS 将在登录时启动 LocalPaste。"
+            return "已启用，macOS 将在登录时启动\(AppBrand.name)。"
         case .requiresApproval:
             return "已登记，但仍需在系统设置中批准。"
         case .notFound:
