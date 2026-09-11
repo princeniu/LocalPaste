@@ -21,6 +21,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.prince.LocalPaste
+        PRODUCT_NAME: Clipmori
+        EXECUTABLE_NAME: LocalPaste
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: LocalPaste/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_IDENTITY: "-"

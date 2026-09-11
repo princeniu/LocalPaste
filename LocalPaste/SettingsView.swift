@@ -104,7 +104,7 @@ struct SettingsView: View {
                             .disabled(!loginItemManager.allowsChanges)
                     }
                 } else if !loginItemManager.isAvailable {
-                    Text("请将 LocalPaste 放入“应用程序”后重试。")
+                    Text("请将\(AppBrand.name)放入“应用程序”后重试。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if let error = loginItemManager.lastErrorMessage {
@@ -216,11 +216,11 @@ struct SettingsView: View {
     private var aboutSettings: some View {
         Section {
             VStack(spacing: 12) {
-                Image(systemName: "doc.on.clipboard.fill")
-                    .font(.system(size: 36)).foregroundStyle(.orange)
-                    .frame(width: 76, height: 76)
-                    .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
-                Text("LocalPaste").font(.title2.weight(.semibold))
+                Image(nsImage: AppBrand.icon)
+                    .resizable().interpolation(.high)
+                    .frame(width: 88, height: 88)
+                    .accessibilityHidden(true)
+                Text(AppBrand.displayName).font(.title2.weight(.semibold))
                 Text("随手复制，随时找回。")
                     .foregroundStyle(.secondary)
                 Text("版本 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")

@@ -5,9 +5,9 @@ repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 output_dir="${LOCALPASTE_BUILD_OUTPUT:-$(mktemp -d "$HOME/Library/Caches/LocalPasteRelease.XXXXXX")}"
 mkdir -p "$output_dir"
 output_dir="$(cd "$output_dir" && pwd)"
-app_path="$output_dir/LocalPaste.app"
+app_path="$output_dir/Clipmori.app"
 if [[ -e "$app_path" ]]; then
-    echo "Output already contains LocalPaste.app; choose a fresh output directory." >&2
+    echo "Output already contains Clipmori.app; choose a fresh output directory." >&2
     exit 1
 fi
 revision="$(git -C "$repo_dir" rev-parse --short=12 HEAD)"
@@ -27,7 +27,7 @@ if ! xcodebuild -project "$repo_dir/LocalPaste.xcodeproj" -scheme LocalPaste \
     exit 1
 fi
 
-ditto --norsrc "$output_dir/derived/Build/Products/Release/LocalPaste.app" "$app_path"
+ditto --norsrc "$output_dir/derived/Build/Products/Release/Clipmori.app" "$app_path"
 if [[ -n "${LOCALPASTE_SIGNING_IDENTITY:-}" ]]; then
     codesign --force --options runtime --timestamp=none --identifier com.prince.LocalPaste \
         --sign "$LOCALPASTE_SIGNING_IDENTITY" "$app_path"
@@ -37,11 +37,12 @@ fi
 python3 - "$repo_dir" "$output_dir" "$revision" <<'PY'
 import hashlib, json, pathlib, plistlib, subprocess, sys
 repo, output = map(pathlib.Path, sys.argv[1:3])
-app = output / 'LocalPaste.app'
+app = output / 'Clipmori.app'
 info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
 sources = sorted(p for p in (repo / 'LocalPaste').rglob('*') if p.is_file()) + [repo / 'project.yml']
 manifest = {str(p.relative_to(repo)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
 report = {
+    'product_name': info['CFBundleDisplayName'], 'bundle_identifier': info['CFBundleIdentifier'],
     'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
     'revision': sys.argv[3],
     'commit': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
@@ -50,5 +51,5 @@ report = {
 }
 (output / 'build-info.json').write_text(json.dumps(report, indent=2) + '\n')
 PY
-ditto -c -k --keepParent "$app_path" "$output_dir/LocalPaste.zip"
+ditto -c -k --keepParent "$app_path" "$output_dir/Clipmori.zip"
 echo "Release ready: $app_path"

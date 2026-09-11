@@ -5,11 +5,11 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>LocalPaste</string>
+	<string>拾贴 · Clipmori</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.prince.LocalPaste</string>
 	<key>CFBundleName</key>
-	<string>LocalPaste</string>
+	<string>Clipmori</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -20,6 +20,8 @@
 	<string>$(LOCALPASTE_REVISION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

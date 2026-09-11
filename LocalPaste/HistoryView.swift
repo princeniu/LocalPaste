@@ -79,10 +79,11 @@ struct HistoryView: View {
     private var header: some View {
         HStack(spacing: 12) {
             HStack(spacing: 9) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.orange)
-                Text("LocalPaste").font(.headline)
+                Image(nsImage: AppBrand.icon)
+                    .resizable().interpolation(.high)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
+                Text(AppBrand.name).font(.headline)
             }
 
             Spacer(minLength: 12)

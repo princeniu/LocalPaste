@@ -1,6 +1,8 @@
-# LocalPaste
+# 拾贴 · Clipmori
 
-原生 macOS 本地剪贴板工具。独立实现底部横向卡片、历史搜索、预览、收藏分类和跨应用粘贴；不复制 Paste 的品牌或素材。
+随手复制，随时找回。
+
+原生 macOS 剪贴板工具，让复制过的文字、图片和文件随时可用。搜索历史、收藏常用内容，再粘贴回正在使用的应用。数据保存在这台 Mac，无需账号。
 
 当前状态：个人自用开发基线。常用内容往返、暂停/排除及主要键盘路径已实机验证；上限与清空保留收藏已通过隔离存储及独立 App 的 GUI 验证。进入日用观察，不是正式发行版，也不代表全部边界测试通过。
 
@@ -32,6 +34,8 @@ scripts/build-release.sh
 ```
 
 脚本在独立缓存目录产出 Release App、ZIP 和 `build-info.json`，记录版本、构建号、提交及源码摘要。构建号默认采用提交计数，可用 `LOCALPASTE_BUILD_NUMBER` 指定；未提交改动会在修订中标记 `dirty`。设置 `LOCALPASTE_BUILD_OUTPUT` 可选择新的输出目录。
+
+安装包名称为 `Clipmori.app` / `Clipmori.zip`。开发工程与 Bundle ID 沿用 LocalPaste，现有数据和偏好可直接继续使用。名称与图标见 [品牌资源](docs/brand/README.md)。
 
 默认产物未签名。日用安装可通过 `LOCALPASTE_SIGNING_IDENTITY` 指定本机稳定身份完成签名，脚本不会自行替换已安装的 App。详见 [首次运行](docs/runbooks/first-run.md)。
 
