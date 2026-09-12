@@ -13,5 +13,5 @@ xcrun swiftc -O -module-name LocalPaste -parse-as-library \
 fixture_dir="$output_dir/legacy-fixture-$(uuidgen)"
 "$output_dir/legacy-fixture" "$fixture_dir"
 xcrun swiftc -O -module-name LocalPaste -parse-as-library -I "$sdk_dir/usr/include/libxml2" \
-    "${sources[@]}" "$repo_dir/Tests/RegressionMain.swift" -o "$output_dir/regressions"
+    "${sources[@]}" "$repo_dir/Tests/BackupRegressions.swift" "$repo_dir/Tests/RegressionMain.swift" -o "$output_dir/regressions"
 "$output_dir/regressions" "$fixture_dir"

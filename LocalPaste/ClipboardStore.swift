@@ -351,7 +351,7 @@ final class ClipboardStore: ObservableObject {
         }
     }
 
-    private func persistChanges() throws {
+    func persistChanges() throws {
         // Some SwiftData runtimes log a read-only save failure without throwing it.
         guard allowsSave else { throw CocoaError(.fileWriteNoPermission) }
         try modelContext.save()

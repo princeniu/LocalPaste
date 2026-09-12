@@ -5,7 +5,7 @@ import SwiftUI
 import Combine
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let modelContainer: ModelContainer?
     let store: ClipboardStore?
     let shortcutManager: GlobalShortcutManager
@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var pauseMenuItem: NSMenuItem!
     private var settingsWindowController: NSWindowController?
+    private var welcomeWindowController: NSWindowController?
     private var pauseObservation: AnyCancellable?
     private let startupError: String?
 
@@ -72,6 +73,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         _ = shortcutManager.registerInitialShortcut()
         monitor.start()
+        let defaults = UserDefaults.standard
+        if WelcomeExperience.shouldPresent(defaults: defaults, hasExistingData: !store.entries.isEmpty || !store.categories.isEmpty) {
+            showWelcome()
+        } else {
+            defaults.set(true, forKey: WelcomeExperience.completedKey)
+        }
+    }
+
+    func showWelcome() {
+        if welcomeWindowController == nil {
+            let content = WelcomeView(shortcutManager: shortcutManager) { [weak self] in
+                UserDefaults.standard.set(true, forKey: WelcomeExperience.completedKey)
+                self?.welcomeWindowController?.close()
+                self?.showHistory()
+            }
+            let window = NSWindow(contentViewController: NSHostingController(rootView: content))
+            window.styleMask = [.titled, .closable]
+            window.title = "欢迎使用\(AppBrand.name)"
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            welcomeWindowController = NSWindowController(window: window)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        welcomeWindowController?.showWindow(nil)
+        welcomeWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === welcomeWindowController?.window {
+            UserDefaults.standard.set(true, forKey: WelcomeExperience.completedKey)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

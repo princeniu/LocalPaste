@@ -8,7 +8,7 @@ struct SettingsView: View {
     @ObservedObject var loginItemManager: LoginItemManager
 
     private enum Page: String, CaseIterable, Identifiable {
-        case general = "通用", privacy = "隐私", categories = "分类", about = "关于"
+        case general = "通用", privacy = "隐私", categories = "分类", data = "数据", about = "关于"
         var id: Self { self }
     }
     @State private var page: Page = .general
@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var categoryToRename: ClipCategory?
     @State private var errorDetails: String?
     @State private var pasteAuthorized = AXIsProcessTrusted()
+    @State private var showUsageGuide = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +37,7 @@ struct SettingsView: View {
                 case .general: generalSettings
                 case .privacy: privacySettings
                 case .categories: categorySettings
+                case .data: BackupSettingsView(store: store)
                 case .about: aboutSettings
                 }
             }
@@ -64,6 +66,10 @@ struct SettingsView: View {
             CategoryEditor(title: "重命名分类", name: category.name, store: store) { name in
                 store.renameCategory(category, to: name)
             }
+        }
+        .sheet(isPresented: $showUsageGuide) {
+            WelcomeView(shortcutManager: shortcutManager, allowsSystemChanges: loginItemManager.allowsChanges,
+                        startTitle: "知道了") { showUsageGuide = false }
         }
     }
 
@@ -225,6 +231,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 Text("版本 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
                     .font(.caption).foregroundStyle(.secondary)
+                Button("使用指南") { showUsageGuide = true }.buttonStyle(.link)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 24)
             DisclosureGroup("版本详情") {
