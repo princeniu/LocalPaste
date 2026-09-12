@@ -236,6 +236,10 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             _ = store.addEntry(payload: filePayload, sourceBundleIdentifier: "synthetic.test", sourceName: "人工样例", title: "FIX file preview")
             for i in (1...12).reversed() { add(store, String(format: "FIX card %02d", i) + " — 人工键盘样例") }
             _ = store.addCategory(named: "已有分类")
+            if CommandLine.arguments.contains("--empty") {
+                store.clearHistory(preservingFavorites: false)
+                for category in store.categories { store.deleteCategory(category) }
+            }
             var environment = PasteCoordinator.Environment()
             environment.pasteboard = board; environment.isTrusted = { false }; environment.requestPermission = {}
             panel = PanelController(store: store, pasteCoordinator: PasteCoordinator(store: store, environment: environment), onSettings: { [weak self] in self?.showSettings() })
@@ -280,6 +284,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
         }
         do {
             try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
+            try testBackupAndRestore()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }
             else { throw RegressionFailure(message: "Legacy fixture path required") }
             log("ALL_REGRESSIONS_PASSED")
