@@ -95,6 +95,8 @@ LOCALPASTE_SIGNING_IDENTITY="你的有效签名身份" scripts/build-release.sh
 
 **是否已经适合正式分发？** 目前处于早期日用阶段。已完成隔离回归与部分实机验证，尚未完成公证安装包、自动更新及全部硬件场景验收。具体边界见[验证状态](docs/verification/STATUS.md)。
 
+安装包构建与公证流程见[分发指南](docs/runbooks/distribution.md)。
+
 ## 参与贡献
 
 欢迎提交 [Issue](https://github.com/princeniu/LocalPaste/issues) 或 Pull Request。错误报告请附 macOS 版本、拾贴版本、复现步骤及预期行为；不要上传真实剪贴板内容、备份、数据库或密钥。

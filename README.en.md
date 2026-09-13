@@ -95,6 +95,8 @@ Backups exclude preferences, system permissions and original files. Maximum back
 
 **Is this a finished public distribution?** This is an early daily-use project. Isolated regressions and selected real-app workflows have been verified, but notarized packaging, automatic updates and all hardware scenarios have not. See [verification status (Chinese)](docs/verification/STATUS.md).
 
+See the [distribution guide (Chinese)](docs/runbooks/distribution.md) for DMG packaging and notarization.
+
 ## Contributing
 
 [Issues](https://github.com/princeniu/LocalPaste/issues) and pull requests are welcome. Include your macOS version, app version, steps to reproduce and expected behavior. Never attach real clipboard content, backups, databases or credentials.
