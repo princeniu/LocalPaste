@@ -18,7 +18,7 @@ fi
 version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app_path/Contents/Info.plist")
 build=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app_path/Contents/Info.plist")
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$build" =~ ^[0-9]+$ ]] || { echo "Invalid version/build." >&2; exit 1; }
-lipo -verify_arch arm64 x86_64 "$app_path/Contents/MacOS/LocalPaste"
+lipo "$app_path/Contents/MacOS/LocalPaste" -verify_arch arm64 x86_64
 mkdir -p "$output_dir"
 output_dir="$(cd "$output_dir" && pwd)"
 stage="$(mktemp -d "$output_dir/.dmg-stage.XXXXXX")"
