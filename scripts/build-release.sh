@@ -21,7 +21,7 @@ fi
 xcodegen generate --spec "$repo_dir/project.yml" --project "$repo_dir"
 if ! xcodebuild -project "$repo_dir/LocalPaste.xcodeproj" -scheme LocalPaste \
     -configuration Release -derivedDataPath "$output_dir/derived" \
-    CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION="$build_number" \
+    CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64" CURRENT_PROJECT_VERSION="$build_number" \
     LOCALPASTE_REVISION="$revision" build > "$output_dir/build.log" 2>&1; then
     tail -n 80 "$output_dir/build.log" >&2
     exit 1
@@ -29,7 +29,7 @@ fi
 
 ditto --norsrc "$output_dir/derived/Build/Products/Release/Clipmori.app" "$app_path"
 if [[ -n "${LOCALPASTE_SIGNING_IDENTITY:-}" ]]; then
-    codesign --force --options runtime --timestamp=none --identifier com.prince.LocalPaste \
+    codesign --force --options runtime --timestamp --identifier com.prince.LocalPaste \
         --sign "$LOCALPASTE_SIGNING_IDENTITY" "$app_path"
     codesign --verify --deep --strict "$app_path"
 fi

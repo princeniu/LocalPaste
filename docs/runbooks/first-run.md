@@ -6,7 +6,7 @@
 
 产品现名「拾贴 · Clipmori」，新构建包为 `Clipmori.app`。本机沿用原安装路径就地升级，应用内显示新品牌；Bundle ID 与数据目录保持不变。
 
-仓库不附带签名 App。新机器需要自行编译并完成签名授权，不代表已公证或可公开分发。
+[GitHub Releases](https://github.com/princeniu/LocalPaste/releases/latest) 提供 Developer ID 签名并通过 Apple 公证的 Universal DMG。新用户可下载后拖入 Applications；已有用户先备份并退出旧版，避免同时运行两个版本。自行构建的产物不自动继承发行包的公证状态。
 
 ## 构建与签名
 
