@@ -15,7 +15,7 @@
 
 拾贴是一个原生 macOS 剪贴板历史工具。复制过的文字、图片和文件，以横向卡片保存在屏幕底部；搜索、滚动、预览，再把需要的内容贴回正在使用的应用。
 
-无需账号，历史保存在本机。当前为 **1.2.0 早期版本**，界面以简体中文为主；源码已开放，暂未提供经过公证的安装包、Homebrew 分发或自动更新。
+无需账号，历史保存在本机。当前为 **1.2.0 早期版本**，界面以简体中文为主；源码已开放，现提供 Developer ID 签名并通过 Apple 公证的 DMG；暂不提供 Homebrew 分发或自动更新。
 
 ## 功能
 
@@ -32,7 +32,15 @@
 
 ## 安装
 
-目前请从源码构建。需要 **macOS 14+、完整 Xcode 与 XcodeGen**；本地已使用 Xcode 26 构建，CI 在 macOS 15 上执行回归与 Release 构建。
+### 下载 DMG
+
+从 [GitHub Releases](https://github.com/princeniu/LocalPaste/releases/latest) 下载已公证安装包，支持 **macOS 14+、Apple Silicon 与 Intel**。打开 DMG，将 `Clipmori.app` 拖入 Applications，再从“应用程序”打开。
+
+已有 LocalPaste 用户请先导出备份、退出旧版，并参阅[升级说明](docs/runbooks/first-run.md)。不要同时运行新旧版本。
+
+### 从源码构建
+
+需要 **macOS 14+、完整 Xcode 与 XcodeGen**；本地已使用 Xcode 26 构建，CI 在 macOS 15 上执行回归与 Release 构建。
 
 已安装 Homebrew 的开发者可以这样开始：
 
@@ -93,7 +101,7 @@ LOCALPASTE_SIGNING_IDENTITY="你的有效签名身份" scripts/build-release.sh
 
 **备份可以把文件带到另一台 Mac 吗？** 不可以。文件类记录保存的是原路径引用，需要自行迁移原文件。
 
-**是否已经适合正式分发？** 目前处于早期日用阶段。已完成隔离回归与部分实机验证，尚未完成公证安装包、自动更新及全部硬件场景验收。具体边界见[验证状态](docs/verification/STATUS.md)。
+**是否已经适合正式分发？** 目前处于早期日用阶段。已完成隔离回归与部分实机验证，DMG 已通过 Apple 公证；自动更新及全部硬件场景验收尚未完成。具体边界见[验证状态](docs/verification/STATUS.md)。
 
 安装包构建与公证流程见[分发指南](docs/runbooks/distribution.md)。
 

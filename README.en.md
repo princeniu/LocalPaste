@@ -11,11 +11,11 @@
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
 
-[Features](#features) · [Build](#build) · [Usage](#usage) · [Privacy](#privacy) · [FAQ](#faq) · [Contributing](#contributing)
+[Features](#features) · [Install](#install) · [Usage](#usage) · [Privacy](#privacy) · [FAQ](#faq) · [Contributing](#contributing)
 
 Clipmori keeps copied text, images and file references in a horizontal card shelf at the bottom of your Mac screen. Search your history, preview an item and paste it back into the app you were using.
 
-No account required. History stays on your Mac. **Version 1.2.0 is an early release**, with a primarily Simplified Chinese interface. Source code is available; notarized downloads, Homebrew distribution and automatic updates are not available yet.
+No account required. History stays on your Mac. **Version 1.2.0 is an early release**, with a primarily Simplified Chinese interface. Source code is available; a Developer ID-signed, Apple-notarized DMG is available. Homebrew distribution and automatic updates are not available yet.
 
 ## Features
 
@@ -30,7 +30,15 @@ No account required. History stays on your Mac. **Version 1.2.0 is an early rele
 | Back up history | Export history, favorites and categories; preview a merge before importing |
 | Feel at home | Native SwiftUI/AppKit UI, menu bar, custom shortcut and launch at login |
 
-## Build
+## Install
+
+### Download the DMG
+
+Download the notarized installer from [GitHub Releases](https://github.com/princeniu/LocalPaste/releases/latest). Supports **macOS 14+, Apple Silicon and Intel**. Open the DMG, drag `Clipmori.app` into Applications, then launch it from Applications.
+
+Existing LocalPaste users should export a backup and quit the old app first; see the [upgrade guide (Chinese)](docs/runbooks/first-run.md). Do not run both versions at once.
+
+### Build from source
 
 Requires **macOS 14+, full Xcode and XcodeGen**. Local builds have been verified with Xcode 26; CI runs regressions and Release builds on macOS 15.
 
@@ -93,7 +101,7 @@ Backups exclude preferences, system permissions and original files. Maximum back
 
 **Does a backup transfer my files to another Mac?** No. File entries retain their original path references; transfer the files separately.
 
-**Is this a finished public distribution?** This is an early daily-use project. Isolated regressions and selected real-app workflows have been verified, but notarized packaging, automatic updates and all hardware scenarios have not. See [verification status (Chinese)](docs/verification/STATUS.md).
+**Is this a finished public distribution?** This is an early daily-use project. Isolated regressions and selected real-app workflows have been verified, and the DMG has passed Apple notarization. Automatic updates and all hardware scenarios have not been verified. See [verification status (Chinese)](docs/verification/STATUS.md).
 
 See the [distribution guide (Chinese)](docs/runbooks/distribution.md) for DMG packaging and notarization.
 
