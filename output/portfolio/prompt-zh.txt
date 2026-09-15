@@ -1,0 +1,7 @@
+Edit this existing Clipmori portfolio cover into its Chinese-language companion. Preserve original landscape aspect ratio, warm ivory and peach background, existing orange app icon, shadows, screenshot placement and exact screenshot content. Change ONLY the marketing text OUTSIDE the app screenshot:
+1. Large title "Clipmori" becomes "拾贴 · Clipmori", adjust title size to fit elegantly without colliding with upper-right badge.
+2. Headline "Copy now. Find it later." becomes exactly "随手复制，随时找回。"
+3. Description becomes exactly "原生 macOS 剪贴板历史工具"
+4. Upper-right badge becomes exactly "macOS · 开源"
+5. Bottom-left credit becomes exactly "设计与开发：Prince Niu".
+Use beautifully set Chinese sans-serif typography, clear hierarchy and generous whitespace consistent with original. Preserve every UI element and all text inside the application screenshot unchanged, including its English example cards. Do not add new elements, features or text. Return a single finished Chinese cover image.
