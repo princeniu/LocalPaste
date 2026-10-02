@@ -131,6 +131,7 @@ final class ClipboardMonitor: ObservableObject {
         var hasImage = false
         var hasHTML = false
         var hasRichText = false
+        var capturedBytes = 0
 
         for item in pasteboardItems {
             var representations: [StoredPasteboardRepresentation] = []
@@ -145,6 +146,11 @@ final class ClipboardMonitor: ObservableObject {
                 }
                 let filePath = uti == "public.file-url" ? readFilePath(from: item, type: type) : nil
                 guard data != nil || stringValue != nil || filePath != nil else { continue }
+                capturedBytes += (data?.count ?? 0) + (stringValue?.utf8.count ?? 0)
+                guard capturedBytes <= ClipboardStoragePolicy.maximumEntryBytes else {
+                    store.lastErrorMessage = ClipboardStorageError.entryTooLarge.localizedDescription
+                    return nil
+                }
                 representations.append(
                     StoredPasteboardRepresentation(
                         uti: uti,
@@ -235,7 +241,9 @@ final class ClipboardMonitor: ObservableObject {
 
     private func makeTitle(payload: StoredPasteboardPayload) -> String {
         if !payload.filePaths.isEmpty {
-            return payload.filePaths.map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: ", ")
+            let names = payload.filePaths.prefix(2).map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: ", ")
+            let suffix = payload.filePaths.count > 2 ? " 等 \(payload.filePaths.count) 个文件" : ""
+            return String(names.prefix(80)) + (names.count > 80 ? "…" : "") + suffix
         }
         let firstLine = payload.displayText
             .components(separatedBy: .newlines)

@@ -285,6 +285,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
         do {
             try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
             try testBackupAndRestore()
+            try testDataRepairs(); try testPasteRepairs(); try testPresentationRepairs(); try testStorageRepairs()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }
             else { throw RegressionFailure(message: "Legacy fixture path required") }
             log("ALL_REGRESSIONS_PASSED")

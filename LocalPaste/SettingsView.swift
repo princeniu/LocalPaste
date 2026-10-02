@@ -93,8 +93,12 @@ struct SettingsView: View {
                         Text("\(store.historyLimit) 条").foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
+                Stepper(value: $store.storageLimitMB, in: ClipboardStoragePolicy.limitRangeMB, step: 256) {
+                    LabeledContent("内容容量", value: "\(store.storageLimitMB) MB")
+                }
+                LabeledContent("已存内容", value: ByteCountFormatter.string(fromByteCount: Int64(store.storedPayloadBytes), countStyle: .binary))
             } header: { Text("历史") }
-              footer: { Text("收藏的内容会一直保留。") }
+              footer: { Text("收藏会保留。单条内容最多 32 MB；达到容量上限后暂停新增，请清理或提高容量。容量按历史内容计算，不含数据库和缓存开销。") }
 
             Section("启动与快捷键") {
                 Toggle("登录时启动", isOn: Binding(

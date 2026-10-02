@@ -33,6 +33,9 @@ struct HistoryView: View {
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         }
         .onAppear { viewModel.ensureSelection() }
+        .onChange(of: store.revision) { _, _ in
+            CardPreviewCache.shared.retainEntries(withIDs: Set(store.entries.map(\.id)))
+        }
         .onChange(of: focusedEntryID) { _, id in
             viewModel.focusedCardID = id
             if let id { viewModel.selectedID = id }
@@ -214,6 +217,7 @@ struct HistoryView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityValue(viewModel.selectedCategoryID == id ? "已选中" : "未选中")
     }
 
     @ViewBuilder
@@ -343,7 +347,7 @@ struct HistoryView: View {
         .contextMenu {
             Button("粘贴") { onPaste(entry, false) }
             Button("纯文本粘贴") { onPaste(entry, true) }
-                .disabled(store.plainText(for: entry) == nil)
+                .disabled(!store.canPastePlainText(for: entry))
             Button(entry.isFavorite ? "取消收藏" : "收藏") { store.toggleFavorite(entry) }
             Button("预览") {
                 viewModel.select(entry)
@@ -375,43 +379,45 @@ struct HistoryView: View {
 
     @ViewBuilder
     private func cardPreview(_ entry: ClipboardEntry) -> some View {
-        if let payload = entry.payload {
-            switch entry.contentType {
-            case .image, .mixed:
-                if let data = imageData(from: payload), let image = NSImage(data: data) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, minHeight: 66, maxHeight: 66, alignment: .leading)
-                        .background(Color.black.opacity(0.12))
-                        .clipShape(.rect(cornerRadius: 7))
-                } else {
-                    textPreview(payload.displayText.isEmpty ? "图片" : payload.displayText)
-                }
-            case .fileReference:
+        switch entry.contentType {
+        case .image, .mixed:
+            let preview = CardPreviewCache.shared.preview(for: entry)
+            if let image = preview.thumbnail {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, minHeight: 66, maxHeight: 66, alignment: .leading)
+                    .background(Color.black.opacity(0.12))
+                    .clipShape(.rect(cornerRadius: 7))
+            } else {
+                textPreview(preview.isReadable ? store.displayText(for: entry) : "无法读取内容")
+            }
+        case .fileReference:
+            let preview = CardPreviewCache.shared.preview(for: entry)
+            if preview.isReadable {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(payload.filePaths.prefix(2)), id: \.self) { path in
+                    ForEach(Array(preview.fileNames.enumerated()), id: \.offset) { _, name in
                         HStack(spacing: 6) {
                             Image(systemName: "doc.fill")
                                 .foregroundStyle(.secondary)
-                            Text(path.components(separatedBy: "/").last ?? path)
+                            Text(name)
                                 .lineLimit(1)
                         }
                     }
-                    if payload.filePaths.count > 2 {
-                        Text("+\(payload.filePaths.count - 2) 个文件")
+                    if preview.fileCount > 2 {
+                        Text("+\(preview.fileCount - 2) 个文件")
                             .foregroundStyle(.secondary)
                     }
                 }
                 .font(.callout)
-            default:
-                let text = store.displayText(for: entry)
-                let lines = text.components(separatedBy: .newlines)
-                let excerpt = lines.first == entry.title ? lines.dropFirst().joined(separator: "\n") : text
-                textPreview(excerpt.isEmpty ? "\(text.count) 个字符" : excerpt)
-            }
-        } else {
-            textPreview("无法读取内容")
+            } else { textPreview("无法读取内容") }
+        default:
+            // The store already indexed these strings; decoding the original
+            // HTML/RTF/plain-text payload on every hover is unnecessary.
+            let text = store.displayText(for: entry)
+            let lines = text.components(separatedBy: .newlines)
+            let excerpt = lines.first == entry.title ? lines.dropFirst().joined(separator: "\n") : text
+            textPreview(excerpt.isEmpty ? "\(text.count) 个字符" : excerpt)
         }
     }
 
@@ -422,15 +428,6 @@ struct HistoryView: View {
             .lineLimit(3)
             .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private func imageData(from payload: StoredPasteboardPayload) -> Data? {
-        for item in payload.items {
-            for representation in item.representations where representation.uti == "public.png" || representation.uti == "public.tiff" {
-                if let data = representation.data { return data }
-            }
-        }
-        return nil
     }
 
     private var footer: some View {

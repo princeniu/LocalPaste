@@ -16,6 +16,8 @@ final class PasteCoordinator: ObservableObject {
         }
         var activate: (NSRunningApplication) -> Void = { $0.activate(options: []) }
         var frontmostPID: () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+        var currentApplicationPID: () -> pid_t = { ProcessInfo.processInfo.processIdentifier }
+        var isTerminated: (NSRunningApplication) -> Bool = { $0.isTerminated }
         var sendCommandV: () -> Bool = { PasteCoordinator.sendCommandV() }
         var schedule: (@escaping () -> Void) -> Void = { work in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { work() }
@@ -52,10 +54,12 @@ final class PasteCoordinator: ObservableObject {
             self?.feedbackMessage = message
             completion(message)
         }
+        guard targetIsCurrent(targetApplication, finish: finish) else { return }
         let pasteboard = environment.pasteboard
+        let previousChangeCount = pasteboard.changeCount
         let items: [NSPasteboardItem]
         if plainTextOnly {
-            guard let text = store.plainText(for: entry) else {
+            guard let text = store.plainText(for: entry), !text.isEmpty else {
                 finish("此条目没有可提取的文字，剪贴板未更改。")
                 return
             }
@@ -80,6 +84,12 @@ final class PasteCoordinator: ObservableObject {
             }
             return copy
         }
+        // Reading promised clipboard data can take time; recheck before replacing it.
+        guard targetIsCurrent(targetApplication, finish: finish) else { return }
+        guard pasteboard.changeCount == previousChangeCount else {
+            finish("你复制了新内容，本次粘贴已取消。")
+            return
+        }
         pasteboard.clearContents()
         guard pasteboard.writeObjects(items) else {
             pasteboard.clearContents()
@@ -98,7 +108,7 @@ final class PasteCoordinator: ObservableObject {
             finish(message)
             return
         }
-        guard let targetApplication, !targetApplication.isTerminated else {
+        guard let targetApplication, !environment.isTerminated(targetApplication) else {
             let message = "已复制，切换到目标应用后按 ⌘V 粘贴。"
             finish(message)
             return
@@ -125,6 +135,24 @@ final class PasteCoordinator: ObservableObject {
             let message = "已发送粘贴快捷键"
             finish(message)
         }
+    }
+
+    private func targetIsCurrent(_ target: NSRunningApplication?, finish: (String) -> Void) -> Bool {
+        // With no captured destination, copying for a manual paste remains available.
+        guard let target else { return true }
+        guard !environment.isTerminated(target) else {
+            finish("目标应用已退出，本次粘贴已取消，剪贴板未更改。")
+            return false
+        }
+        guard let frontmostPID = environment.frontmostPID() else {
+            finish("无法确认目标应用，本次粘贴已取消，剪贴板未更改。")
+            return false
+        }
+        guard frontmostPID == target.processIdentifier || frontmostPID == environment.currentApplicationPID() else {
+            finish("当前应用已改变，请重新打开历史后粘贴。剪贴板未更改。")
+            return false
+        }
+        return true
     }
 
     private func makePasteboardItem(_ storedItem: StoredPasteboardItem) -> NSPasteboardItem {

@@ -243,19 +243,7 @@ struct PreviewView: View {
     private func attributedString(from payload: StoredPasteboardPayload) -> NSAttributedString? {
         for item in payload.items {
             for representation in item.representations {
-                let documentType: NSAttributedString.DocumentType
-                switch representation.uti {
-                case "public.html": documentType = .html
-                case "public.rtf": documentType = .rtf
-                case "com.apple.flat-rtfd": documentType = .rtfd
-                default: continue
-                }
-                guard let data = representation.data else { continue }
-                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                    .documentType: documentType,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ]
-                if let attributed = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
+                if let attributed = PayloadText.attributedString(from: representation) {
                     return attributed
                 }
             }

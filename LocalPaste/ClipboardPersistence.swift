@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import CoreData
+import Darwin
 
 enum ClipboardPersistenceError: LocalizedError {
     case incompatibleLegacyStore
@@ -36,7 +37,11 @@ enum ClipboardPersistence {
         let directory = destination.deletingLastPathComponent()
         let files = FileManager.default
         if files.fileExists(atPath: destination.path) { return try container(at: destination) }
-        guard !files.fileExists(atPath: directory.path) else { throw ClipboardPersistenceError.incompleteStore }
+        if files.fileExists(atPath: directory.path) {
+            // A previous first launch may have failed before creating the store.
+            // rmdir only removes an empty directory, including if its contents change concurrently.
+            guard rmdir(directory.path) == 0 else { throw ClipboardPersistenceError.incompleteStore }
+        }
         try files.createDirectory(at: applicationSupport, withIntermediateDirectories: true)
         // Alternate builds never inspect the shared legacy location by default.
         let legacy = legacyURL ?? (bundleIdentifier == productionBundleID
@@ -44,13 +49,24 @@ enum ClipboardPersistence {
         if let legacy, files.fileExists(atPath: legacy.path) {
             try importLegacyStore(from: legacy, to: destination)
         } else {
-            try files.createDirectory(at: directory, withIntermediateDirectories: false)
+            try createFreshStore(at: destination)
         }
         return try container(at: destination)
     }
 
     private static func container(at url: URL) throws -> ModelContainer {
         try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+    }
+
+    private static func createFreshStore(at destination: URL) throws {
+        let files = FileManager.default
+        let parent = destination.deletingLastPathComponent().deletingLastPathComponent()
+        let staging = parent.appendingPathComponent(".LocalPaste-create-\(UUID().uuidString)", isDirectory: true)
+        try files.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? files.removeItem(at: staging) }
+        try autoreleasepool { _ = try container(at: staging.appendingPathComponent("default.store")) }
+        // Publish only after initialization succeeds; failed attempts cannot block a retry.
+        try files.moveItem(at: staging, to: destination.deletingLastPathComponent())
     }
 
     private static func importLegacyStore(from source: URL, to destination: URL) throws {

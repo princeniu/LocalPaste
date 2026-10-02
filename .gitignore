@@ -34,3 +34,4 @@ __pycache__/
 *.db-*
 *.store
 *.store-*
+*.store.summary-*.json
