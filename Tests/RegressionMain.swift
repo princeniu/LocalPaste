@@ -283,6 +283,11 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             return
         }
         do {
+            if CommandLine.arguments.contains("--panel-dismissal") {
+                try testPanelDismissal()
+                log("PANEL_DISMISSAL_REGRESSIONS_PASSED")
+                return
+            }
             if CommandLine.arguments.contains("--history-session") {
                 try testHistorySession()
                 log("HISTORY_SESSION_REGRESSIONS_PASSED")
@@ -290,6 +295,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             }
             try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
             try testHistorySession()
+            try testPanelDismissal()
             try testBackupAndRestore()
             try testDataRepairs(); try testPasteRepairs(); try testPresentationRepairs(); try testStorageRepairs()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }
