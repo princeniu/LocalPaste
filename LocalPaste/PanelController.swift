@@ -126,6 +126,7 @@ final class PanelController: NSObject {
     private var panel: NSPanel?
     private var localEventMonitor: Any?
     private var targetApplication: NSRunningApplication?
+    private var applicationObservation: AnyCancellable?
 
     init(store: ClipboardStore, pasteCoordinator: PasteCoordinator, onSettings: @escaping () -> Void) {
         self.store = store
@@ -133,6 +134,21 @@ final class PanelController: NSObject {
         self.onSettings = onSettings
         self.viewModel = HistoryViewModel(store: store)
         super.init()
+        applicationObservation = NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.didActivateApplicationNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let application = NSWorkspace.shared.frontmostApplication,
+                          application.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+                    if self.isVisible, self.targetApplication?.processIdentifier != application.processIdentifier {
+                        self.close()
+                    }
+                    // Keep the last external app for returns from our own settings or menus.
+                    self.targetApplication = application
+                }
+            }
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -147,7 +163,7 @@ final class PanelController: NSObject {
 
     func show() {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
-           frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
+           frontmost.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             targetApplication = frontmost
         }
         viewModel.statusMessage = nil
@@ -209,6 +225,8 @@ final class PanelController: NSObject {
     }
 
     private func paste(entry: ClipboardEntry, plainTextOnly: Bool) {
+        // Ignore a click queued before an application switch closed the panel.
+        guard isVisible else { return }
         pasteCoordinator.paste(
             entry: entry,
             plainTextOnly: plainTextOnly,

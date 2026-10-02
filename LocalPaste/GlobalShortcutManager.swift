@@ -29,7 +29,18 @@ struct ShortcutSpec: Codable, Equatable {
             0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
             8: "C", 9: "V", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 17: "T",
             31: "O", 32: "U", 34: "I", 35: "P", 37: "L", 38: "J", 40: "K", 45: "N",
-            46: "M", 36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "Esc"
+            46: "M", 36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "Esc",
+            18: "1", 19: "2", 20: "3", 21: "4", 23: "5", 22: "6", 26: "7", 28: "8", 25: "9", 29: "0",
+            24: "=", 27: "-", 30: "]", 33: "[", 39: "'", 41: ";", 42: "\\", 43: ",", 44: "/", 47: ".", 50: "`",
+            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7", 100: "F8",
+            101: "F9", 109: "F10", 103: "F11", 111: "F12", 105: "F13", 107: "F14", 113: "F15", 106: "F16",
+            64: "F17", 79: "F18", 80: "F19", 90: "F20",
+            123: "←", 124: "→", 125: "↓", 126: "↑", 115: "Home", 119: "End", 116: "Page Up", 121: "Page Down",
+            117: "⌦", 114: "Help", 71: "Clear", 76: "Enter",
+            65: "Num .", 67: "Num *", 69: "Num +", 75: "Num /", 78: "Num -", 81: "Num =",
+            82: "Num 0", 83: "Num 1", 84: "Num 2", 85: "Num 3", 86: "Num 4", 87: "Num 5",
+            88: "Num 6", 89: "Num 7", 91: "Num 8", 92: "Num 9", 95: "Num ,",
+            10: "§", 93: "¥", 94: "_", 102: "英数", 104: "かな"
         ]
         return result + (keyNames[keyCode] ?? "Key\(keyCode)")
     }
@@ -51,7 +62,7 @@ final class GlobalShortcutManager: NSObject, ObservableObject {
     override init() {
         if let data = UserDefaults.standard.data(forKey: "globalShortcut"),
            let decoded = try? JSONDecoder().decode(ShortcutSpec.self, from: data) {
-            shortcut = decoded
+            shortcut = ShortcutSpec(keyCode: decoded.keyCode, modifiers: decoded.modifiers)
         } else {
             shortcut = .defaultShortcut
         }

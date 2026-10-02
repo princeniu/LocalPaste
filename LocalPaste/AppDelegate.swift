@@ -109,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
+        store?.flushSummaryCache()
         shortcutManager.unregisterHotKey()
     }
 

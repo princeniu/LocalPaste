@@ -61,6 +61,10 @@ Move the built app into Applications and open it. Clipmori lives in the menu bar
 
 Signing does not imply notarization. See the [first-run guide (Chinese)](docs/runbooks/first-run.md) for signing and upgrade details. The repository and bundle identifier retain the original LocalPaste name for data compatibility.
 
+### 1.2.1 source candidate
+
+The October 2, 2026 source changes fix paste destinations, first-launch recovery, backup compatibility and rich-text handling. These changes have not shipped in a new public DMG. Source builds add bounded thumbnail caching, a rebuildable search index and a content capacity setting: new captures are limited to 32 MiB per record, with a default total of 1 GiB, adjustable from 256 MiB to 4 GiB. At capacity, new records and imports are rejected while existing history and favorites remain intact. Usage counts encoded payloads, excluding database overhead, caches and referenced files. Existing large records remain readable; the separate 256 MB backup limit still applies. See the [repair and verification notes (Chinese)](docs/changes/review-repairs-2026-10-02.md).
+
 ## Usage
 
 1. Copy something as usual.
@@ -88,7 +92,7 @@ Backups exclude preferences, system permissions and original files. Maximum back
 ## Privacy
 
 - The app has no accounts, cloud sync, telemetry or networking features.
-- History and backup files are **not encrypted**. Store backups carefully and pause recording before copying sensitive content.
+- History, cached search summaries and backup files are **not encrypted**. Store backups carefully and pause recording before copying sensitive content.
 - App exclusions and confidential-type filtering are best-effort protections; macOS source identification cannot guarantee that every sensitive copy is excluded.
 - File history stores references only. Moving or deleting the original file can make a record unusable.
 - History is stored under `~/Library/Application Support/com.prince.LocalPaste/` by default.

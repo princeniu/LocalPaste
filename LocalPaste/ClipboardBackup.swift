@@ -102,16 +102,19 @@ struct ClipboardBackup: Codable, Sendable {
               Set(entries.map(\.id)).count == entries.count,
               Set(categories.map(\.id)).count == categories.count else { throw BackupError.invalid }
         let categoryIDs = Set(categories.map(\.id))
-        for category in categories {
-            guard validDate(category.createdAt), !category.name.isEmpty,
-                  category.name == category.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                  category.name.count <= 1_000 else { throw BackupError.invalid }
-        }
         var bytes = 0
-        for entry in entries {
-            bytes += entry.payloadData.count
+        for category in categories {
+            bytes += category.name.utf8.count
             guard bytes <= Self.maximumBytes else { throw BackupError.tooLarge }
-            guard validDate(entry.createdAt), entry.title.count <= 8_192,
+            guard validDate(category.createdAt), !category.name.isEmpty,
+                  category.name == category.name.trimmingCharacters(in: .whitespacesAndNewlines) else { throw BackupError.invalid }
+        }
+        // Older stores accepted long names and file titles. Preserve them without truncation;
+        // the complete archive size limit still bounds metadata and payloads together.
+        for entry in entries {
+            bytes += entry.payloadData.count + entry.title.utf8.count
+            guard bytes <= Self.maximumBytes else { throw BackupError.tooLarge }
+            guard validDate(entry.createdAt),
                   entry.sourceName.count <= 1_024, entry.sourceBundleIdentifier.count <= 1_024,
                   ClipboardContentType(rawValue: entry.contentTypeRaw) != nil,
                   Set(entry.categoryIDs).isSubset(of: categoryIDs),
@@ -145,10 +148,11 @@ extension ClipboardStore {
     func backupSnapshot() throws -> ClipboardBackup {
         let records = try entries.map { entry -> ClipboardBackup.Entry in
             let ids = entry.categoryIDsData.isEmpty ? [] : try JSONDecoder().decode([String].self, from: entry.categoryIDsData)
+            var seenCategoryIDs = Set<UUID>()
             let categoryIDs = try ids.map { value -> UUID in
                 guard let id = UUID(uuidString: value) else { throw BackupError.invalid }
                 return id
-            }
+            }.filter { seenCategoryIDs.insert($0).inserted }
             return .init(id: entry.id, createdAt: entry.createdAt,
                          sourceBundleIdentifier: entry.sourceBundleIdentifier, sourceName: entry.sourceName,
                          title: entry.title, contentTypeRaw: entry.contentTypeRaw, isFavorite: entry.isFavorite,
@@ -176,6 +180,7 @@ extension ClipboardStore {
         }
         let existingIDs = Set(entries.map(\.id))
         let newEntries = backup.entries.filter { !existingIDs.contains($0.id) }
+        try validateAdditionalCapacity(bytes: newEntries.reduce(0) { $0 + $1.payloadData.count })
         let normalCount = entries.filter { !$0.isFavorite }.count + newEntries.filter { !$0.isFavorite }.count
         guard normalCount <= 5_000 else { throw BackupError.tooManyEntries }
         return BackupImportPlan(revision: revision, previousLimit: historyLimit,
@@ -193,10 +198,11 @@ extension ClipboardStore {
                 modelContext.insert(ClipCategory(id: category.id, name: category.name, createdAt: category.createdAt))
             }
             for record in plan.entries {
+                var seenCategoryIDs = Set<String>()
                 let ids = try record.categoryIDs.map { id -> String in
                     guard let mapped = plan.categoryMapping[id] else { throw BackupError.invalid }
                     return mapped.uuidString
-                }
+                }.filter { seenCategoryIDs.insert($0).inserted }
                 modelContext.insert(ClipboardEntry(id: record.id, createdAt: record.createdAt,
                     sourceBundleIdentifier: record.sourceBundleIdentifier, sourceName: record.sourceName,
                     title: record.title, contentTypeRaw: record.contentTypeRaw, isFavorite: record.isFavorite,

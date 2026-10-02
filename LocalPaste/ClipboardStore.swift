@@ -124,22 +124,31 @@ final class ClipboardStore: ObservableObject {
     static let historyLimitKey = "historyLimit"
     static let pausedKey = "monitorPaused"
     static let excludedApplicationsKey = "excludedApplications"
+    static let excludedApplicationsDefaultsVersionKey = "excludedApplicationsDefaultsVersion"
     static let defaultHistoryLimit = 500
+    static let maximumCategoryNameLength = 1_000
+    static let storageLimitKey = "storageLimitMB"
 
     let modelContext: ModelContext
     private let defaults: UserDefaults
     private let allowsSave: Bool
-    private struct ContentSummary {
-        let text: String
-        let plainText: String?
-        let searchText: String
-    }
-    private var summaries: [UUID: ContentSummary] = [:]
+    private let summaryCache: ClipboardSummaryCache
+    private var summaries: [UUID: ClipboardContentSummary] = [:]
+    private(set) var summaryCacheHits = 0
 
     @Published private(set) var entries: [ClipboardEntry] = []
     @Published private(set) var categories: [ClipCategory] = []
     @Published private(set) var revision = 0
+    @Published private(set) var storedPayloadBytes = 0
     @Published var lastErrorMessage: String?
+    @Published var storageLimitMB: Int {
+        didSet {
+            let bounded = max(ClipboardStoragePolicy.limitRangeMB.lowerBound,
+                min(storageLimitMB, ClipboardStoragePolicy.limitRangeMB.upperBound))
+            if storageLimitMB != bounded { storageLimitMB = bounded }
+            defaults.set(bounded, forKey: Self.storageLimitKey)
+        }
+    }
     @Published var isPaused: Bool {
         didSet { defaults.set(isPaused, forKey: Self.pausedKey) }
     }
@@ -162,7 +171,16 @@ final class ClipboardStore: ObservableObject {
         self.modelContext = ModelContext(modelContainer)
         self.modelContext.autosaveEnabled = false
         self.allowsSave = modelContainer.configurations.allSatisfy(\.allowsSave)
+        let configuration = modelContainer.configurations.first
+        let cacheURL = configuration.flatMap { configuration in
+            !configuration.isStoredInMemoryOnly && configuration.allowsSave
+                ? configuration.url.appendingPathExtension("summary-v1.json") : nil
+        }
+        self.summaryCache = ClipboardSummaryCache(url: cacheURL)
         self.defaults = defaults
+        let configuredStorage = defaults.object(forKey: Self.storageLimitKey) as? Int ?? ClipboardStoragePolicy.defaultLimitMB
+        self.storageLimitMB = max(ClipboardStoragePolicy.limitRangeMB.lowerBound,
+            min(configuredStorage, ClipboardStoragePolicy.limitRangeMB.upperBound))
         self.isPaused = defaults.bool(forKey: Self.pausedKey)
         let configuredLimit = defaults.object(forKey: Self.historyLimitKey) as? Int ?? Self.defaultHistoryLimit
         self.historyLimit = max(50, min(configuredLimit, 5_000))
@@ -180,12 +198,20 @@ final class ClipboardStore: ObservableObject {
             let ids = Set(fetchedEntries.map(\.id))
             summaries = summaries.filter { ids.contains($0.key) }
             for entry in fetchedEntries where summaries[entry.id] == nil {
-                let payload = entry.payload
+                if let cached = summaryCache.summary(for: entry) {
+                    summaries[entry.id] = cached
+                    summaryCacheHits += 1
+                    continue
+                }
+                let bytes = entry.payloadData
+                let payload = try? JSONDecoder().decode(StoredPasteboardPayload.self, from: bytes)
                 let plainText = payload.flatMap { PayloadText.plainText(from: $0) }
                 let text = plainText ?? payload?.displayText ?? "无法读取内容"
-                summaries[entry.id] = ContentSummary(text: text, plainText: plainText,
-                    searchText: [entry.title, entry.sourceName, text].joined(separator: " ").lowercased())
+                summaries[entry.id] = ClipboardContentSummary(text: text, plainText: plainText,
+                    searchText: [entry.title, entry.sourceName, text].joined(separator: " ").lowercased(), payloadBytes: bytes.count)
             }
+            storedPayloadBytes = summaries.values.reduce(0) { $0 + $1.payloadBytes }
+            summaryCache.save(entries: fetchedEntries, summaries: summaries)
             entries = fetchedEntries
             categories = fetchedCategories
             revision += 1
@@ -206,6 +232,8 @@ final class ClipboardStore: ObservableObject {
         guard !payload.items.isEmpty else { return nil }
         do {
             let encoded = try JSONEncoder().encode(payload)
+            try ClipboardStoragePolicy.validateCapture(bytes: encoded.count)
+            try validateAdditionalCapacity(bytes: encoded.count)
             let entry = ClipboardEntry(
                 title: title,
                 contentTypeRaw: payload.contentType,
@@ -215,6 +243,7 @@ final class ClipboardStore: ObservableObject {
             entry.sourceName = sourceName
             modelContext.insert(entry)
             try persistChanges()
+            lastErrorMessage = nil
             refresh()
             pruneHistory()
             return entry
@@ -250,6 +279,10 @@ final class ClipboardStore: ObservableObject {
         let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else {
             lastErrorMessage = "分类名称不能为空。"
+            return nil
+        }
+        guard cleaned.count <= Self.maximumCategoryNameLength || categories.contains(where: { $0.id == id && $0.name == cleaned }) else {
+            lastErrorMessage = "分类名称不能超过 \(Self.maximumCategoryNameLength) 个字符。"
             return nil
         }
         guard !categories.contains(where: { $0.id != id && $0.name.caseInsensitiveCompare(cleaned) == .orderedSame }) else {
@@ -314,9 +347,20 @@ final class ClipboardStore: ObservableObject {
         entry.payload
     }
 
-    func plainText(for entry: ClipboardEntry) -> String? {
-        summaries[entry.id]?.plainText
+    func validateAdditionalCapacity(bytes: Int) throws {
+        guard bytes > 0 else { return }
+        try ClipboardStoragePolicy.validateTotal(existingBytes: storedPayloadBytes,
+            addingBytes: bytes, limitMB: storageLimitMB)
     }
+
+    func flushSummaryCache() { summaryCache.waitForPendingWrites() }
+
+    func plainText(for entry: ClipboardEntry) -> String? {
+        // Derived indexes accelerate browsing; only original payloads supply pasted text.
+        entry.payload.flatMap { PayloadText.plainText(from: $0) }
+    }
+
+    func canPastePlainText(for entry: ClipboardEntry) -> Bool { summaries[entry.id]?.plainText != nil }
 
     func displayText(for entry: ClipboardEntry) -> String {
         summaries[entry.id]?.text ?? "无法读取内容"
@@ -374,12 +418,27 @@ final class ClipboardStore: ObservableObject {
     }
 
     private static func loadExcludedApplications(from defaults: UserDefaults) -> [ExcludedApplication] {
+        let oldPasswordID = "com.agilebits.onepassword7"
+        let currentPasswordID = "com.1password.1password"
         if let data = defaults.data(forKey: Self.excludedApplicationsKey),
-           let apps = try? JSONDecoder().decode([ExcludedApplication].self, from: data) {
+           var apps = try? JSONDecoder().decode([ExcludedApplication].self, from: data) {
+            if defaults.integer(forKey: Self.excludedApplicationsDefaultsVersionKey) < 1 {
+                if apps.contains(where: { $0.bundleIdentifier == oldPasswordID }),
+                   !apps.contains(where: { $0.bundleIdentifier == currentPasswordID }) {
+                    apps.append(ExcludedApplication(bundleIdentifier: currentPasswordID, name: "1Password"))
+                    if let migrated = try? JSONEncoder().encode(apps) {
+                        defaults.set(migrated, forKey: Self.excludedApplicationsKey)
+                    }
+                }
+                // Only migrate once, so a later manual removal remains respected.
+                defaults.set(1, forKey: Self.excludedApplicationsDefaultsVersionKey)
+            }
             return apps
         }
+        defaults.set(1, forKey: Self.excludedApplicationsDefaultsVersionKey)
         return [
-            ExcludedApplication(bundleIdentifier: "com.agilebits.onepassword7", name: "1Password"),
+            ExcludedApplication(bundleIdentifier: oldPasswordID, name: "1Password 7"),
+            ExcludedApplication(bundleIdentifier: currentPasswordID, name: "1Password"),
             ExcludedApplication(bundleIdentifier: "com.bitwarden.desktop", name: "Bitwarden"),
             ExcludedApplication(bundleIdentifier: "com.lastpass.LastPass", name: "LastPass")
         ]
