@@ -254,7 +254,13 @@ struct HistoryView: View {
                     .background(HorizontalWheelSupport())
                 }
                 .onChange(of: viewModel.selectedID) { _, id in
-                    if let id { proxy.scrollTo(id, anchor: .center) }
+                    if let id {
+                        proxy.scrollTo(id, anchor: id == viewModel.visibleEntries.first?.id ? .leading : .center)
+                    }
+                }
+                .onChange(of: viewModel.scrollToStartRequest) { _, _ in
+                    focusedEntryID = nil
+                    if let id = viewModel.visibleEntries.first?.id { proxy.scrollTo(id, anchor: .leading) }
                 }
                 .onAppear {
                     if let id = viewModel.selectedID { proxy.scrollTo(id, anchor: .center) }
