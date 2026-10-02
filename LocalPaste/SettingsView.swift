@@ -94,9 +94,18 @@ struct SettingsView: View {
                     }
                 }
                 Stepper(value: $store.storageLimitMB, in: ClipboardStoragePolicy.limitRangeMB, step: 256) {
-                    LabeledContent("内容容量", value: "\(store.storageLimitMB) MB")
+                    HStack {
+                        Text("内容容量")
+                        Spacer()
+                        Text("\(store.storageLimitMB) MB").foregroundStyle(.secondary).monospacedDigit()
+                    }
                 }
+                .accessibilityLabel("内容容量")
+                .accessibilityValue("\(store.storageLimitMB) MB")
                 LabeledContent("已存内容", value: ByteCountFormatter.string(fromByteCount: Int64(store.storedPayloadBytes), countStyle: .binary))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("已存内容")
+                    .accessibilityValue(ByteCountFormatter.string(fromByteCount: Int64(store.storedPayloadBytes), countStyle: .binary))
             } header: { Text("历史") }
               footer: { Text("收藏会保留。单条内容最多 32 MB；达到容量上限后暂停新增，请清理或提高容量。容量按历史内容计算，不含数据库和缓存开销。") }
 
