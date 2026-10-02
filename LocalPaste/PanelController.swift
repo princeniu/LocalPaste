@@ -147,6 +147,9 @@ final class PanelController: NSObject {
     private let viewModel: HistoryViewModel
     private var panel: NSPanel?
     private var localEventMonitor: Any?
+    private var globalMouseMonitor: Any?
+    private var menuTrackingObservations: [AnyCancellable] = []
+    private var menuTrackingDepth = 0
     private var targetApplication: NSRunningApplication?
     private var applicationObservation: AnyCancellable?
 
@@ -207,13 +210,13 @@ final class PanelController: NSObject {
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(panel.contentView)
-        installLocalEventMonitor()
+        installEventMonitors()
     }
 
     func close() {
         guard isVisible else { return }
         panel?.orderOut(nil)
-        removeLocalEventMonitor()
+        removeEventMonitors()
         viewModel.previewEntryID = nil
         viewModel.recordDismissal()
     }
@@ -268,10 +271,43 @@ final class PanelController: NSObject {
         }
     }
 
-    private func installLocalEventMonitor() {
-        removeLocalEventMonitor()
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, let panel = self.panel, event.window === panel else { return event }
+    static func shouldDismissForMouseDown(in window: NSWindow?, panel: NSWindow, menuIsTracking: Bool) -> Bool {
+        // AppKit menus and SwiftUI sheets use their own windows.
+        guard !menuIsTracking else { return false }
+        var window = window
+        while let current = window {
+            if current === panel { return false }
+            window = current.parent ?? current.sheetParent
+        }
+        return true
+    }
+
+    private func installEventMonitors() {
+        removeEventMonitors()
+        let center = NotificationCenter.default
+        menuTrackingObservations = [
+            center.publisher(for: NSMenu.didBeginTrackingNotification).sink { [weak self] _ in
+                self?.menuTrackingDepth += 1
+            },
+            center.publisher(for: NSMenu.didEndTrackingNotification).sink { [weak self] _ in
+                guard let self else { return }
+                self.menuTrackingDepth = max(0, self.menuTrackingDepth - 1)
+            }
+        ]
+        let mouseDown: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        // Global monitors observe other apps without consuming their clicks.
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseDown) { [weak self] _ in
+            self?.close()
+        }
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown.union(.keyDown)) { [weak self] event in
+            guard let self, let panel = self.panel else { return event }
+            if event.type != .keyDown {
+                if Self.shouldDismissForMouseDown(in: event.window, panel: panel, menuIsTracking: self.menuTrackingDepth > 0) {
+                    self.close()
+                }
+                return event
+            }
+            guard event.window === panel else { return event }
             guard panel.attachedSheet == nil else { return event }
             if let editor = panel.firstResponder as? NSTextView {
                 if event.keyCode == 53 && !editor.hasMarkedText() {
@@ -311,10 +347,16 @@ final class PanelController: NSObject {
         }
     }
 
-    private func removeLocalEventMonitor() {
+    private func removeEventMonitors() {
         if let localEventMonitor {
             NSEvent.removeMonitor(localEventMonitor)
             self.localEventMonitor = nil
         }
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+        menuTrackingObservations.removeAll()
+        menuTrackingDepth = 0
     }
 }
