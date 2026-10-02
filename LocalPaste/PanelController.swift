@@ -11,8 +11,11 @@ final class HistoryViewModel: ObservableObject {
     @Published var focusedCardID: UUID?
     @Published var previewEntryID: UUID?
     @Published var statusMessage: String?
+    @Published private(set) var scrollToStartRequest = 0
     @Published private(set) var visibleEntries: [ClipboardEntry] = []
     private var storeObservation: AnyCancellable?
+    private var lastDismissedAt: Date?
+    static let browsingRetentionInterval: TimeInterval = 5 * 60
 
     let store: ClipboardStore
 
@@ -58,6 +61,25 @@ final class HistoryViewModel: ObservableObject {
 
     func select(_ entry: ClipboardEntry) {
         selectedID = entry.id
+    }
+
+    func recordDismissal(at date: Date = Date()) {
+        lastDismissedAt = date
+    }
+
+    func prepareForPresentation(at date: Date = Date()) {
+        defer { lastDismissedAt = nil }
+        guard let lastDismissedAt,
+              date.timeIntervalSince(lastDismissedAt) >= Self.browsingRetentionInterval else {
+            ensureSelection()
+            return
+        }
+        selectedID = visibleEntries.first?.id
+        focusedCardID = nil
+        previewEntryID = nil
+        // Mouse scrolling does not change selection. Request a scroll even when
+        // the first card was already selected before the panel was dismissed.
+        scrollToStartRequest += 1
     }
 
     func moveSelection(by offset: Int) {
@@ -167,7 +189,11 @@ final class PanelController: NSObject {
             targetApplication = frontmost
         }
         viewModel.statusMessage = nil
-        viewModel.ensureSelection()
+        if isVisible {
+            viewModel.ensureSelection()
+        } else {
+            viewModel.prepareForPresentation()
+        }
 
         let panel = makePanelIfNeeded()
         let mouseLocation = NSEvent.mouseLocation
@@ -185,9 +211,11 @@ final class PanelController: NSObject {
     }
 
     func close() {
+        guard isVisible else { return }
         panel?.orderOut(nil)
         removeLocalEventMonitor()
         viewModel.previewEntryID = nil
+        viewModel.recordDismissal()
     }
 
     private func makePanelIfNeeded() -> NSPanel {
