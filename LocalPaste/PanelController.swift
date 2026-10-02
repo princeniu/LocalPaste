@@ -12,6 +12,7 @@ final class HistoryViewModel: ObservableObject {
     @Published var previewEntryID: UUID?
     @Published var statusMessage: String?
     @Published private(set) var scrollToStartRequest = 0
+    @Published private(set) var searchFocusRequest = 0
     @Published private(set) var visibleEntries: [ClipboardEntry] = []
     private var storeObservation: AnyCancellable?
     private var lastDismissedAt: Date?
@@ -90,8 +91,29 @@ final class HistoryViewModel: ObservableObject {
             selectedID = items.first?.id
             return
         }
-        let newIndex = (currentIndex + offset + items.count) % items.count
+        let newIndex = max(0, min(currentIndex + offset, items.count - 1))
         selectedID = items[newIndex].id
+    }
+
+    func selectBoundary(first: Bool) {
+        selectedID = first ? visibleEntries.first?.id : visibleEntries.last?.id
+        if first { scrollToStartRequest += 1 }
+    }
+
+    func returnToLatest() {
+        query = ""
+        selectedCategoryID = nil
+        focusedCardID = nil
+        previewEntryID = nil
+        selectBoundary(first: true)
+    }
+
+    func focusSearch() { searchFocusRequest += 1 }
+
+    func undoDeletion() {
+        guard let entry = store.undoDeletion() else { return }
+        if visibleEntries.contains(where: { $0.id == entry.id }) { select(entry) }
+        statusMessage = "已恢复"
     }
 
     func showPreviewForSelection() {
@@ -282,6 +304,33 @@ final class PanelController: NSObject {
         return true
     }
 
+    enum KeyboardAction: Equatable {
+        case native, close, focusSearch, undo, preview
+        case paste(plainText: Bool), move(Int), boundary(first: Bool)
+    }
+
+    static func keyboardAction(keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
+                               editingText: Bool, hasMarkedText: Bool,
+                               navigationFocused: Bool, cardFocused: Bool, canUndo: Bool) -> KeyboardAction {
+        guard !hasMarkedText else { return .native }
+        let modifiers = modifiers.intersection([.command, .control, .option, .shift])
+        if modifiers == .command && keyCode == 3 { return .focusSearch }
+        if modifiers == .command && keyCode == 6 && !editingText && canUndo { return .undo }
+        if keyCode == 53 { return .close }
+        if [36, 76].contains(keyCode), modifiers.isSubset(of: .shift), editingText || navigationFocused {
+            return .paste(plainText: modifiers.contains(.shift))
+        }
+        guard !editingText, modifiers.isEmpty else { return .native }
+        switch keyCode {
+        case 123 where navigationFocused || cardFocused: return .move(-1)
+        case 124 where navigationFocused || cardFocused: return .move(1)
+        case 115 where navigationFocused || cardFocused: return .boundary(first: true)
+        case 119 where navigationFocused || cardFocused: return .boundary(first: false)
+        case 49 where navigationFocused: return .preview
+        default: return .native
+        }
+    }
+
     private func installEventMonitors() {
         removeEventMonitors()
         let center = NotificationCenter.default
@@ -309,41 +358,25 @@ final class PanelController: NSObject {
             }
             guard event.window === panel else { return event }
             guard panel.attachedSheet == nil else { return event }
-            if let editor = panel.firstResponder as? NSTextView {
-                if event.keyCode == 53 && !editor.hasMarkedText() {
-                    panel.makeFirstResponder(panel.contentView)
-                    return nil
-                }
-                return event
-            }
-            // Controls retain their native Enter/Space behavior. Only the navigation
-            // container and explicitly focused cards participate in history navigation.
-            let navigationFocused = panel.firstResponder === panel.contentView
-            switch event.keyCode {
-            case 123:
-                guard navigationFocused || self.viewModel.focusedCardID != nil else { return event }
-                self.viewModel.moveSelection(by: -1)
-                return nil
-            case 124:
-                guard navigationFocused || self.viewModel.focusedCardID != nil else { return event }
-                self.viewModel.moveSelection(by: 1)
-                return nil
-            case 36, 76:
-                guard navigationFocused else { return event }
+            let editor = panel.firstResponder as? NSTextView
+            let action = Self.keyboardAction(keyCode: event.keyCode, modifiers: event.modifierFlags,
+                editingText: editor != nil, hasMarkedText: editor?.hasMarkedText() == true,
+                navigationFocused: panel.firstResponder === panel.contentView,
+                cardFocused: self.viewModel.focusedCardID != nil, canUndo: self.store.canUndoDeletion())
+            switch action {
+            case .native: return event
+            case .close: self.close()
+            case .focusSearch: self.viewModel.focusSearch()
+            case .undo: self.viewModel.undoDeletion()
+            case .move(let offset): self.viewModel.moveSelection(by: offset)
+            case .boundary(let first): self.viewModel.selectBoundary(first: first)
+            case .preview: self.viewModel.showPreviewForSelection()
+            case .paste(let plainText):
                 if let entry = self.viewModel.selectedEntry {
-                    self.paste(entry: entry, plainTextOnly: false)
+                    self.paste(entry: entry, plainTextOnly: plainText)
                 }
-                return nil
-            case 49:
-                guard navigationFocused else { return event }
-                self.viewModel.showPreviewForSelection()
-                return nil
-            case 53:
-                self.close()
-                return nil
-            default:
-                return event
             }
+            return nil
         }
     }
 

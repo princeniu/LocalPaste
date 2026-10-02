@@ -135,6 +135,38 @@ final class ClipboardStore: ObservableObject {
     private let summaryCache: ClipboardSummaryCache
     private var summaries: [UUID: ClipboardContentSummary] = [:]
     private(set) var summaryCacheHits = 0
+    private var deletedEntry: DeletedEntrySnapshot?
+    private var undoExpiryTask: Task<Void, Never>?
+    static let deletionUndoInterval: TimeInterval = 10
+    @Published private(set) var undoDeadline: Date?
+
+    private struct DeletedEntrySnapshot {
+        let id: UUID
+        let createdAt: Date
+        let sourceBundleIdentifier: String
+        let sourceName: String
+        let title: String
+        let contentTypeRaw: String
+        let isFavorite: Bool
+        let payloadData: Data
+        let categoryIDsData: Data
+
+        init(_ entry: ClipboardEntry) {
+            id = entry.id; createdAt = entry.createdAt
+            sourceBundleIdentifier = entry.sourceBundleIdentifier; sourceName = entry.sourceName
+            title = entry.title; contentTypeRaw = entry.contentTypeRaw; isFavorite = entry.isFavorite
+            payloadData = entry.payloadData; categoryIDsData = entry.categoryIDsData
+        }
+
+        func restore(validCategoryIDs: Set<String>) -> ClipboardEntry {
+            let categoryIDs = (try? JSONDecoder().decode([String].self, from: categoryIDsData)) ?? []
+            let retainedIDs = categoryIDs.filter { validCategoryIDs.contains($0) }
+            return ClipboardEntry(id: id, createdAt: createdAt, sourceBundleIdentifier: sourceBundleIdentifier,
+                sourceName: sourceName, title: title, contentTypeRaw: contentTypeRaw, isFavorite: isFavorite,
+                payloadData: payloadData, categoryIDsData: retainedIDs == categoryIDs
+                    ? categoryIDsData : ((try? JSONEncoder().encode(retainedIDs)) ?? Data()))
+        }
+    }
 
     @Published private(set) var entries: [ClipboardEntry] = []
     @Published private(set) var categories: [ClipCategory] = []
@@ -321,11 +353,73 @@ final class ClipboardStore: ObservableObject {
         saveAndRefresh()
     }
 
+    @discardableResult
+    func deleteWithUndo(_ entry: ClipboardEntry, at date: Date = Date()) -> Bool {
+        guard entries.contains(where: { $0.id == entry.id }) else { return false }
+        let snapshot = DeletedEntrySnapshot(entry)
+        modelContext.delete(entry)
+        guard saveAndRefresh() else { return false }
+        lastErrorMessage = nil
+        discardDeletionUndo()
+        deletedEntry = snapshot
+        let deadline = date.addingTimeInterval(Self.deletionUndoInterval)
+        undoDeadline = deadline
+        undoExpiryTask = Task { @MainActor [weak self] in
+            let delay = max(0, deadline.timeIntervalSinceNow)
+            do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            catch { return }
+            self?.discardDeletionUndo()
+        }
+        return true
+    }
+
+    func canUndoDeletion(at date: Date = Date()) -> Bool {
+        deletedEntry != nil && undoDeadline.map { date < $0 } == true
+    }
+
+    @discardableResult
+    func undoDeletion(at date: Date = Date()) -> ClipboardEntry? {
+        guard canUndoDeletion(at: date), let snapshot = deletedEntry else {
+            discardDeletionUndo()
+            return nil
+        }
+        if let existing = entries.first(where: { $0.id == snapshot.id }) {
+            discardDeletionUndo()
+            return existing
+        }
+        do {
+            try validateAdditionalCapacity(bytes: snapshot.payloadData.count)
+            guard snapshot.isFavorite || entries.filter({ !$0.isFavorite }).count < historyLimit else {
+                throw NSError(domain: "LocalPaste", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "历史条数已满，请提高保留条数后再撤销。"])
+            }
+            let entry = snapshot.restore(validCategoryIDs: Set(categories.map { $0.id.uuidString }))
+            modelContext.insert(entry)
+            try persistChanges()
+            lastErrorMessage = nil
+            refresh()
+            discardDeletionUndo()
+            return entry
+        } catch {
+            modelContext.rollback()
+            refresh()
+            lastErrorMessage = "撤销删除失败：\(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    private func discardDeletionUndo() {
+        undoExpiryTask?.cancel()
+        undoExpiryTask = nil
+        deletedEntry = nil
+        undoDeadline = nil
+    }
+
     func clearHistory(preservingFavorites: Bool = true) {
         for entry in entries where !preservingFavorites || !entry.isFavorite {
             modelContext.delete(entry)
         }
-        saveAndRefresh()
+        if saveAndRefresh() { discardDeletionUndo() }
     }
 
     func addExcludedApplication(bundleIdentifier: String, name: String) {

@@ -3,26 +3,48 @@ import AppKit
 
 struct PreviewView: View {
     let entry: ClipboardEntry
+    var canPastePlainText = false
+    var onPaste: ((Bool) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     private let surfaceColor = Color(nsColor: .windowBackgroundColor)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-
-                Divider()
-                    .overlay(Color.white.opacity(0.12))
-
-                if let payload = entry.payload {
-                    previewContent(payload)
-                } else {
-                    unavailableContent
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    Divider().overlay(Color.white.opacity(0.12))
+                    if let payload = entry.payload {
+                        previewContent(payload)
+                    } else {
+                        unavailableContent
+                    }
                 }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let onPaste {
+                Divider()
+                HStack(spacing: 12) {
+                    Spacer()
+                    Button("纯文本粘贴") {
+                        dismiss()
+                        onPaste(true)
+                    }
+                    .disabled(!canPastePlainText || entry.payload == nil)
+                    .keyboardShortcut(.return, modifiers: [.shift])
+                    Button("粘贴") {
+                        dismiss()
+                        onPaste(false)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(entry.payload == nil)
+                    .keyboardShortcut(.defaultAction)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+            }
         }
         .background(surfaceColor)
         .tint(.orange)

@@ -244,7 +244,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             environment.pasteboard = board; environment.isTrusted = { false }; environment.requestPermission = {}
             panel = PanelController(store: store, pasteCoordinator: PasteCoordinator(store: store, environment: environment), onSettings: { [weak self] in self?.showSettings() })
             let menu = NSMenu(), submenu = NSMenu(), root = NSMenuItem(); root.submenu = submenu; menu.addItem(root)
-            for (title, selector, key) in [("打开历史",#selector(showHistory),"h"),("设置",#selector(showSettings),","),("退出验证副本",#selector(quit),"q")] {
+            for (title, selector, key) in [("打开历史",#selector(showHistory),"h"),("删除首条人工样例",#selector(deleteFixture),"d"),("设置",#selector(showSettings),","),("退出验证副本",#selector(quit),"q")] {
                 let item = NSMenuItem(title: title, action: selector, keyEquivalent: key); item.target = self; submenu.addItem(item)
             }
             NSApp.mainMenu = menu; NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true); panel.show()
@@ -260,6 +260,9 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
         } catch { log("UI_ERROR \(error)"); NSApp.terminate(nil) }
     }
     @objc func showHistory() { panel.show() }
+    @objc func deleteFixture() {
+        if let entry = store.entries.first { store.deleteWithUndo(entry) }
+    }
     @objc func showSettings() {
         if settings == nil {
             settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 480), styleMask: [.titled,.closable], backing: .buffered, defer: false)
@@ -277,7 +280,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
 @main struct RegressionMain {
     @MainActor static func main() {
         _ = NSApplication.shared
-        if CommandLine.arguments.contains("--ui") {
+        if CommandLine.arguments.contains("--ui") || Bundle.main.object(forInfoDictionaryKey: "ClipmoriVerificationUI") as? Bool == true {
             let delegate = VerificationDelegate(); NSApp.delegate = delegate
             withExtendedLifetime(delegate) { NSApp.run() }
             return
@@ -288,6 +291,13 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
                 log("PANEL_DISMISSAL_REGRESSIONS_PASSED")
                 return
             }
+            if CommandLine.arguments.contains("--history-ux") {
+                try testHistoryUX()
+                try testHistorySession()
+                try testPanelDismissal()
+                log("HISTORY_UX_REGRESSIONS_PASSED")
+                return
+            }
             if CommandLine.arguments.contains("--history-session") {
                 try testHistorySession()
                 log("HISTORY_SESSION_REGRESSIONS_PASSED")
@@ -296,6 +306,7 @@ func write(_ board: NSPasteboard, text: String) { board.clearContents(); board.s
             try testStore(); try testCaptureAndPaste(); try testSearch(); try testHorizontalWheel()
             try testHistorySession()
             try testPanelDismissal()
+            try testHistoryUX()
             try testBackupAndRestore()
             try testDataRepairs(); try testPasteRepairs(); try testPresentationRepairs(); try testStorageRepairs()
             if let fixture = CommandLine.arguments.dropFirst().first { try testMigration(URL(fileURLWithPath: fixture)) }

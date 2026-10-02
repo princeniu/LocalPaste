@@ -33,6 +33,10 @@ struct HistoryView: View {
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         }
         .onAppear { viewModel.ensureSelection() }
+        .onChange(of: viewModel.searchFocusRequest) { _, _ in
+            focusedEntryID = nil
+            searchFocused = true
+        }
         .onChange(of: store.revision) { _, _ in
             CardPreviewCache.shared.retainEntries(withIDs: Set(store.entries.map(\.id)))
         }
@@ -50,7 +54,10 @@ struct HistoryView: View {
             set: { isPresented in if !isPresented { viewModel.previewEntryID = nil } }
         )) {
             if let entry = viewModel.store.entries.first(where: { $0.id == viewModel.previewEntryID }) {
-                PreviewView(entry: entry)
+                PreviewView(entry: entry, canPastePlainText: store.canPastePlainText(for: entry), onPaste: { plainText in
+                    viewModel.previewEntryID = nil
+                    onPaste(entry, plainText)
+                })
             }
         }
         .sheet(isPresented: $showCreateCategory) {
@@ -91,6 +98,15 @@ struct HistoryView: View {
 
             Spacer(minLength: 12)
             searchField
+            Button {
+                searchFocused = false
+                focusedEntryID = nil
+                viewModel.returnToLatest()
+            } label: { Image(systemName: "arrow.uturn.backward") }
+            .buttonStyle(.borderless)
+            .frame(width: 24, height: 24)
+            .accessibilityLabel("回到最新")
+            .help("回到最新，清除搜索和分类")
             Menu {
                 Button("清空历史…", role: .destructive) { showClearConfirmation = true }
             } label: { Image(systemName: "ellipsis.circle") }
@@ -129,7 +145,9 @@ struct HistoryView: View {
             TextField("搜索历史", text: $viewModel.query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
-                .onSubmit { viewModel.ensureSelection() }
+                .onSubmit {
+                    if let entry = viewModel.selectedEntry { onPaste(entry, false) }
+                }
                 .help("搜索内容或来源应用")
             if !viewModel.query.isEmpty {
                 Button("清除", systemImage: "xmark.circle.fill") {
@@ -336,9 +354,10 @@ struct HistoryView: View {
         .focusable()
         .focused($focusedEntryID, equals: entry.id)
         .focusEffectDisabled()
-        .onKeyPress(.return) {
+        .onKeyPress(keys: [.return], phases: .down) { press in
+            guard press.modifiers.intersection([.command, .control, .option]).isEmpty else { return .ignored }
             viewModel.select(entry)
-            onPaste(entry, false)
+            onPaste(entry, press.modifiers.contains(.shift))
             return .handled
         }
         .onKeyPress(.space) {
@@ -346,7 +365,7 @@ struct HistoryView: View {
             viewModel.showPreviewForSelection()
             return .handled
         }
-        .help("点击粘贴；Space 预览；右键查看更多操作")
+        .help("点击粘贴；⇧↵ 纯文本粘贴；Space 预览")
         .onHover { isHovering in
             hoveredEntryID = isHovering ? entry.id : nil
         }
@@ -375,12 +394,36 @@ struct HistoryView: View {
             }
             Divider()
             Button("删除", role: .destructive) {
-                store.delete(entry)
+                if store.deleteWithUndo(entry) { viewModel.statusMessage = nil }
                 viewModel.ensureSelection()
             }
         }
         .accessibilityLabel("\(title)，\(entry.contentType.label)，来自\(entry.sourceName)")
         .accessibilityValue(isSelected ? "已选中" : "")
+        .overlay(alignment: .topTrailing) {
+            if isHovered || isFocused {
+                HStack(spacing: 2) {
+                    Button {
+                        viewModel.select(entry)
+                        viewModel.showPreviewForSelection()
+                    } label: { Image(systemName: "eye").frame(width: 24, height: 24) }
+                    .help("预览")
+                    .accessibilityLabel("预览此条目")
+                    Button { store.toggleFavorite(entry) } label: {
+                        Image(systemName: entry.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(entry.isFavorite ? .pink : .primary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .help(entry.isFavorite ? "取消收藏" : "收藏")
+                    .accessibilityLabel(entry.isFavorite ? "取消收藏此条目" : "收藏此条目")
+                }
+                .font(.system(size: 12))
+                .buttonStyle(.plain)
+                .padding(.horizontal, 2)
+                .background(.regularMaterial, in: Capsule())
+                .padding(4)
+            }
+        }
     }
 
     @ViewBuilder
@@ -447,6 +490,15 @@ struct HistoryView: View {
                 .foregroundStyle(.red)
                 .help(error)
                 .accessibilityHint("打开完整错误说明")
+            } else if store.canUndoDeletion() {
+                HStack(spacing: 8) {
+                    Text("已删除")
+                    Button("撤销") { viewModel.undoDeletion() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.orange)
+                        .help("撤销最近一次删除（⌘Z），10 秒内有效")
+                }
+                .font(.caption)
             } else if let statusMessage = viewModel.statusMessage {
                 Label(statusMessage, systemImage: statusMessage == "已粘贴" ? "checkmark.circle" : "info.circle")
                     .font(.caption)
@@ -457,7 +509,7 @@ struct HistoryView: View {
                     keyboardHint("↵", action: "粘贴")
                     keyboardHint("空格", action: "预览")
                 }
-                .help("← → 选择 · Return 粘贴 · 空格预览 · Esc 关闭")
+                .help("← → 选择 · Return 粘贴 · ⇧↵ 纯文本 · 空格预览 · ⌘F 搜索 · Home/End 首尾 · Esc 关闭")
             }
             Spacer()
             Text("\(viewModel.visibleEntries.count) 条")
