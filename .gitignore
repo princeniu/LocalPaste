@@ -35,3 +35,13 @@ __pycache__/
 *.store
 *.store-*
 *.store.summary-*.json
+
+# Private local state and generated artifacts
+.pytest_cache/
+!.env.example
+*.p8
+*.log
+.venv/
+venv/
+node_modules/
+.worktrees/
