@@ -42,6 +42,7 @@ final class PasteCoordinator: ObservableObject {
         entry: ClipboardEntry,
         plainTextOnly: Bool,
         targetApplication: NSRunningApplication?,
+        prepareForAutomaticPaste: () -> Void = {},
         completion: @escaping (String) -> Void
     ) {
         guard !isPasting else {
@@ -115,6 +116,7 @@ final class PasteCoordinator: ObservableObject {
         }
 
         let processIdentifier = targetApplication.processIdentifier
+        prepareForAutomaticPaste()
         environment.activate(targetApplication)
         environment.schedule { [weak self] in
             guard let self else { return }
