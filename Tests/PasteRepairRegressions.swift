@@ -15,6 +15,12 @@ import AppKit
     var callbacks: [() -> Void] = []
     var activations = 0, sent = 0, permissionRequests = 0
     var feedback = ""
+    var automaticPasteSteps: [String] = []
+    var clipboardAtPanelDismissal: String?
+    let dismissPanel = {
+        clipboardAtPanelDismissal = board.string(forType: .string)
+        automaticPasteSteps.append("dismiss panel")
+    }
     var environment = PasteCoordinator.Environment()
     environment.pasteboard = board
     environment.frontmostPID = { frontmost }
@@ -24,17 +30,26 @@ import AppKit
     environment.requestPermission = { permissionRequests += 1 }
     environment.activate = { application in
         activations += 1
+        automaticPasteSteps.append("activate target")
         frontmost = application.processIdentifier
     }
     environment.schedule = { callbacks.append($0) }
-    environment.sendCommandV = { sent += 1; return true }
+    environment.sendCommandV = {
+        sent += 1
+        automaticPasteSteps.append("send shortcut")
+        return true
+    }
     let coordinator = PasteCoordinator(store: store, environment: environment)
 
-    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: target) { feedback = $0 }
+    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: target,
+                      prepareForAutomaticPaste: dismissPanel) { feedback = $0 }
     try check(callbacks.count == 1 && activations == 1 && board.string(forType: .string) == "selected fixture",
               "current destination accepts the selected clip")
+    try check(clipboardAtPanelDismissal == "selected fixture" && automaticPasteSteps == ["dismiss panel", "activate target"],
+              "dismiss the history panel after copying and before activating the target")
     callbacks.removeFirst()()
-    try check(sent == 1 && !coordinator.isPasting, "current destination sends once and finishes")
+    try check(sent == 1 && !coordinator.isPasting && automaticPasteSteps.last == "send shortcut",
+              "send the shortcut once after the panel dismisses and the target activates")
 
     write(board, text: "keep before app switch")
     let beforeSwitch = board.changeCount
@@ -63,15 +78,19 @@ import AppKit
     try check(sent == 2, "returning from the app's own menu pastes into the remembered destination")
 
     frontmost = nil
-    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: nil) { feedback = $0 }
+    automaticPasteSteps.removeAll()
+    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: nil,
+                      prepareForAutomaticPaste: dismissPanel) { feedback = $0 }
     try check(board.string(forType: .string) == "selected fixture" && activations == 2 && callbacks.isEmpty && feedback.contains("按 ⌘V"),
               "missing destination safely degrades to manual copy without activation or a key")
 
     trusted = false
     frontmost = targetPID
-    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: target) { feedback = $0 }
+    coordinator.paste(entry: entry, plainTextOnly: false, targetApplication: target,
+                      prepareForAutomaticPaste: dismissPanel) { feedback = $0 }
     try check(board.string(forType: .string) == "selected fixture" && callbacks.isEmpty && permissionRequests == 1 && feedback.contains("需要辅助功能"),
               "untrusted valid destination retains the manual-copy fallback")
+    try check(automaticPasteSteps.isEmpty, "manual-copy fallbacks leave the panel available for feedback")
     write(board, text: "keep before untrusted stale request")
     let beforeUntrusted = board.changeCount
     frontmost = otherPID

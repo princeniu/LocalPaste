@@ -209,6 +209,7 @@ final class PanelController: NSObject {
     }
 
     func show() {
+        guard !pasteCoordinator.isPasting else { return }
         if let frontmost = NSWorkspace.shared.frontmostApplication,
            frontmost.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             targetApplication = frontmost
@@ -283,13 +284,11 @@ final class PanelController: NSObject {
         pasteCoordinator.paste(
             entry: entry,
             plainTextOnly: plainTextOnly,
-            targetApplication: targetApplication
+            targetApplication: targetApplication,
+            // A nonactivating panel can keep keyboard focus while the destination is frontmost.
+            prepareForAutomaticPaste: { self.close() }
         ) { [weak self] message in
-            guard let self else { return }
-            self.viewModel.statusMessage = message
-            if message == "已发送粘贴快捷键" {
-                self.close()
-            }
+            self?.viewModel.statusMessage = message
         }
     }
 
